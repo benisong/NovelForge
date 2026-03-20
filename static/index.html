@@ -1,0 +1,2372 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NovelForge - 小说创作助手</title>
+<style>
+:root {
+  --bg-primary: #1e1e2e;
+  --bg-secondary: #181825;
+  --bg-tertiary: #313244;
+  --bg-surface: #24243a;
+  --border: #45475a;
+  --text-primary: #cdd6f4;
+  --text-secondary: #a6adc8;
+  --text-muted: #6c7086;
+  --accent-blue: #89b4fa;
+  --accent-green: #a6e3a1;
+  --accent-red: #f38ba8;
+  --accent-yellow: #f9e2af;
+  --accent-purple: #cba6f7;
+  --accent-teal: #94e2d5;
+  --accent-peach: #fab387;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif; background:var(--bg-primary); color:var(--text-primary); height:100vh; overflow:hidden; }
+::-webkit-scrollbar { width:6px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+.title-bar {
+  height:42px; background:var(--bg-secondary); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; padding:0 16px; gap:6px;
+  font-size:13px; color:var(--text-secondary); user-select:none; position:relative; z-index:100;
+}
+.title-bar .logo { color:var(--accent-purple); font-weight:700; font-size:15px; letter-spacing:1px; }
+.title-bar .sep { color:var(--border); margin:0 4px; }
+
+/* 顶部菜单按钮 */
+.menu-btn {
+  padding:5px 12px; background:var(--bg-tertiary); border:1px solid var(--border); border-radius:5px;
+  color:var(--text-secondary); font-size:12px; cursor:pointer; display:flex; align-items:center; gap:4px; position:relative;
+}
+.menu-btn:hover { border-color:var(--accent-blue); color:var(--text-primary); }
+.menu-btn.open { border-color:var(--accent-blue); color:var(--text-primary); background:var(--bg-surface); }
+
+/* 下拉面板 */
+.dropdown-panel {
+  display:none; position:absolute; top:100%; left:0; margin-top:4px;
+  background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px;
+  box-shadow:0 8px 32px rgba(0,0,0,.4); padding:14px; min-width:340px; max-width:420px;
+  z-index:999; max-height:70vh; overflow-y:auto;
+}
+.dropdown-panel.show { display:block; }
+.dropdown-panel h4 { font-size:12px; color:var(--text-muted); margin-bottom:8px; text-transform:uppercase; letter-spacing:1px; }
+.dropdown-panel .dd-row { display:flex; gap:6px; margin-bottom:6px; }
+.dropdown-panel .dd-row .fg { flex:1; margin-bottom:0; }
+.dropdown-panel .dd-sep { border-top:1px solid var(--border); margin:10px 0; }
+
+/* 下拉列表项 */
+.dd-list-item {
+  display:flex; align-items:center; gap:6px; padding:6px 8px; font-size:12px; border-radius:5px;
+  color:var(--text-secondary); cursor:pointer; margin-bottom:3px;
+}
+.dd-list-item:hover { background:var(--bg-tertiary); }
+.dd-list-item .dli-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dd-list-item .dli-meta { color:var(--text-muted); font-size:11px; white-space:nowrap; }
+.dd-list-item .dli-btn { padding:2px 6px; background:transparent; border:1px solid var(--border); border-radius:3px; color:var(--text-muted); font-size:10px; cursor:pointer; }
+.dd-list-item .dli-btn:hover { border-color:var(--accent-blue); color:var(--accent-blue); }
+.dd-list-item .dli-btn.del:hover { border-color:var(--accent-red); color:var(--accent-red); }
+.dd-list-item.active { color:var(--accent-green); }
+
+.app { display:flex; height:calc(100vh - 42px); }
+
+/* 左侧配置 */
+.sidebar { width:300px; min-width:260px; background:var(--bg-secondary); border-right:1px solid var(--border); overflow-y:auto; flex-shrink:0; }
+.sidebar-section { padding:10px 14px; border-bottom:1px solid var(--border); }
+.sidebar-section h3 { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+.sidebar-section h3 .dot { width:8px; height:8px; border-radius:50%; }
+.fg { margin-bottom:6px; }
+.fg label { display:block; font-size:11px; color:var(--text-secondary); margin-bottom:2px; }
+.fg input, .fg select { width:100%; padding:5px 8px; background:var(--bg-tertiary); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-size:12px; outline:none; }
+.fg input:focus, .fg select:focus { border-color:var(--accent-blue); }
+.model-row { display:flex; gap:4px; align-items:end; }
+.model-row .fg { flex:1; }
+.btn-sm { padding:4px 8px; background:var(--bg-tertiary); border:1px solid var(--border); border-radius:4px; color:var(--accent-blue); font-size:11px; cursor:pointer; white-space:nowrap; }
+.btn-sm:hover { background:var(--border); }
+.btn-copy { display:block; width:100%; padding:5px; margin-top:4px; background:transparent; border:1px dashed var(--border); border-radius:4px; color:var(--text-muted); font-size:11px; cursor:pointer; }
+.btn-copy:hover { border-color:var(--accent-blue); color:var(--accent-blue); }
+.config-row { display:flex; gap:6px; }
+.config-row .fg { flex:1; }
+.chapter-item { padding:5px 8px; font-size:12px; color:var(--text-secondary); cursor:pointer; border-radius:4px; display:flex; align-items:center; gap:4px; }
+.chapter-item:hover { background:var(--bg-tertiary); }
+
+/* 中间主面板 */
+.center { flex:1; display:flex; flex-direction:column; min-width:0; }
+.pipeline-bar { padding:8px 16px; background:var(--bg-surface); border-bottom:1px solid var(--border); display:none; }
+.pipeline-bar.show { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.p-step { font-size:11px; padding:3px 10px; border-radius:10px; background:var(--bg-tertiary); color:var(--text-muted); }
+.p-step.active { color:var(--accent-blue); background:rgba(137,180,250,.12); }
+.p-step.done { color:var(--accent-green); background:rgba(166,227,161,.12); }
+.p-step.fail { color:var(--accent-red); background:rgba(243,139,168,.12); }
+.p-arrow { color:var(--text-muted); font-size:11px; }
+
+.tab-bar { display:flex; background:var(--bg-secondary); border-bottom:1px solid var(--border); min-height:34px; }
+.tab { padding:7px 18px; font-size:13px; color:var(--text-muted); cursor:pointer; border-right:1px solid var(--border); white-space:nowrap; user-select:none; display:flex; align-items:center; gap:6px; }
+.tab:hover { color:var(--text-secondary); background:var(--bg-tertiary); }
+.tab.active { color:var(--text-primary); background:var(--bg-primary); border-bottom:2px solid var(--accent-blue); }
+.tab-body { flex:1; overflow:hidden; position:relative; }
+.pane { display:none; height:100%; flex-direction:column; overflow:hidden; }
+.pane.active { display:flex; }
+#pane-content.active { flex-direction:column; }
+
+/* Bot1 布局 */
+.bot1-layout { display:flex; height:100%; }
+.chat-side { flex:1; display:flex; flex-direction:column; min-width:0; border-right:1px solid var(--border); }
+.chat-header { padding:6px 14px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:flex-end; gap:6px; }
+.chat-messages { flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; }
+.msg { max-width:85%; padding:10px 14px; border-radius:12px; font-size:14px; line-height:1.7; white-space:pre-wrap; word-break:break-word; position:relative; }
+.msg.user { align-self:flex-end; background:linear-gradient(135deg,rgba(137,180,250,.18),rgba(203,166,247,.18)); border:1px solid rgba(137,180,250,.25); }
+.msg.assistant { align-self:flex-start; background:var(--bg-tertiary); border:1px solid var(--border); }
+.msg .msg-label { font-size:11px; margin-bottom:4px; font-weight:600; }
+.msg.assistant .msg-label { color:var(--accent-blue); }
+.msg.user .msg-label { color:var(--accent-purple); text-align:right; }
+.msg .typing-cursor { display:inline-block; width:2px; height:14px; background:var(--accent-blue); animation:blink .8s infinite; vertical-align:middle; margin-left:2px; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+/* 消息删除按钮 */
+.msg .msg-del { position:absolute; top:4px; right:4px; width:20px; height:20px; border-radius:50%; background:transparent; border:none; color:var(--text-muted); font-size:12px; cursor:pointer; display:none; align-items:center; justify-content:center; line-height:1; }
+.msg:hover .msg-del { display:flex; }
+.msg .msg-del:hover { background:rgba(243,139,168,.2); color:var(--accent-red); }
+
+.chat-input-bar { padding:10px 14px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:end; }
+.chat-input-bar textarea { flex:1; background:var(--bg-tertiary); border:1px solid var(--border); border-radius:8px; padding:10px 12px; color:var(--text-primary); font-size:14px; line-height:1.5; resize:none; outline:none; font-family:inherit; min-height:44px; max-height:140px; }
+.chat-input-bar textarea:focus { border-color:var(--accent-blue); }
+.chat-input-bar textarea::placeholder { color:var(--text-muted); }
+.btn-send { padding:8px 16px; background:var(--accent-blue); border:none; border-radius:8px; color:var(--bg-primary); font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; }
+.btn-send:hover { opacity:.9; }
+.btn-send:disabled { opacity:.4; cursor:not-allowed; }
+
+.outline-side { width:42%; min-width:280px; display:flex; flex-direction:column; background:var(--bg-secondary); }
+.outline-header { padding:10px 14px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+.outline-header h4 { font-size:13px; color:var(--accent-blue); font-weight:600; }
+.outline-header .badge-live { font-size:10px; padding:2px 8px; border-radius:8px; background:rgba(166,227,161,.12); color:var(--accent-green); }
+.outline-body { flex:1; overflow-y:auto; padding:14px; font-size:13px; line-height:1.8; white-space:pre-wrap; word-break:break-word; color:var(--text-secondary); }
+.outline-body.empty { display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-style:italic; }
+.outline-actions { padding:10px 14px; border-top:1px solid var(--border); display:flex; gap:8px; }
+
+.btn-primary { padding:8px 20px; background:linear-gradient(135deg,var(--accent-blue),var(--accent-purple)); border:none; border-radius:6px; color:var(--bg-primary); font-size:13px; font-weight:600; cursor:pointer; }
+.btn-primary:hover { opacity:.9; }
+.btn-primary:disabled { opacity:.4; cursor:not-allowed; }
+.btn-outline { padding:8px 16px; background:transparent; border:1px solid var(--border); border-radius:6px; color:var(--text-primary); font-size:13px; cursor:pointer; }
+.btn-outline:hover { border-color:var(--accent-blue); }
+.btn-danger { padding:8px 16px; background:transparent; border:1px solid var(--accent-red); border-radius:6px; color:var(--accent-red); font-size:13px; cursor:pointer; }
+.btn-danger:hover { background:rgba(243,139,168,.1); }
+
+.output-area { flex:1; overflow-y:auto; padding:16px; font-size:14px; line-height:1.8; white-space:pre-wrap; word-break:break-word; }
+.output-area.empty { display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-style:italic; }
+
+/* ===== 错误提示条（红标重试） ===== */
+.error-banner {
+  display:none; padding:12px 16px; background:rgba(243,139,168,.08);
+  border:1px solid rgba(243,139,168,.3); border-radius:8px; margin:12px 16px;
+}
+.error-banner.show { display:block; }
+.error-banner .eb-title { font-size:13px; font-weight:700; color:var(--accent-red); margin-bottom:6px; display:flex; align-items:center; gap:6px; }
+.error-banner .eb-msg { font-size:12px; color:var(--text-secondary); margin-bottom:10px; line-height:1.5; }
+.error-banner .eb-actions { display:flex; gap:8px; }
+.eb-btn-retry { padding:6px 16px; background:var(--accent-red); border:none; border-radius:6px; color:#fff; font-size:12px; font-weight:600; cursor:pointer; }
+.eb-btn-retry:hover { opacity:.85; }
+.eb-btn-restart { padding:6px 16px; background:transparent; border:1px solid var(--border); border-radius:6px; color:var(--text-primary); font-size:12px; cursor:pointer; }
+.eb-btn-restart:hover { border-color:var(--accent-blue); }
+
+/* Bot3 审核面板 */
+.review-pane-inner { display:flex; height:100%; }
+.review-full { flex:1; display:flex; flex-direction:column; overflow-y:auto; }
+.review-full .rsb { flex:1; overflow-y:auto; padding:16px; }
+.score-bar-row { margin-bottom:10px; }
+.score-bar-label { display:flex; justify-content:space-between; font-size:12px; margin-bottom:3px; }
+.score-bar-label .sbl-name { color:var(--text-secondary); }
+.score-bar-label .sbl-val { font-weight:700; }
+.score-bar-track { height:8px; background:var(--bg-tertiary); border-radius:4px; overflow:hidden; }
+.score-bar-fill { height:100%; border-radius:4px; transition:width .6s ease; }
+.review-avg-box { margin:14px 0; padding:14px; background:var(--bg-tertiary); border-radius:8px; text-align:center; }
+.review-avg-box .avg-label { font-size:12px; color:var(--text-muted); margin-bottom:4px; }
+.review-avg-box .avg-score { font-size:32px; font-weight:800; }
+.review-avg-box .avg-status { font-size:13px; margin-top:4px; font-weight:600; }
+.review-detail-text { font-size:12px; line-height:1.6; color:var(--text-secondary); white-space:pre-wrap; word-break:break-word; padding:10px 0; }
+.review-suggestion-box { padding:10px; background:rgba(249,226,175,.06); border:1px solid rgba(249,226,175,.2); border-radius:6px; margin-top:8px; }
+.review-suggestion-box .rsh2 { font-size:11px; color:var(--accent-yellow); font-weight:600; margin-bottom:4px; }
+
+/* 可编辑审核面板 */
+.score-edit-input {
+  width:48px; padding:2px 4px; background:var(--bg-primary); border:1px solid var(--border);
+  border-radius:4px; color:var(--text-primary); font-size:13px; font-weight:700; text-align:center;
+}
+.score-edit-input:focus { border-color:var(--accent-blue); outline:none; }
+.review-edit-textarea {
+  width:100%; min-height:60px; padding:8px; background:var(--bg-primary); border:1px solid var(--border);
+  border-radius:6px; color:var(--text-secondary); font-size:12px; line-height:1.6; resize:vertical;
+  font-family:inherit; white-space:pre-wrap; word-break:break-word;
+}
+.review-edit-textarea:focus { border-color:var(--accent-blue); outline:none; }
+.review-action-bar {
+  display:flex; gap:8px; margin-top:12px; padding:12px; background:var(--bg-tertiary);
+  border-radius:8px; justify-content:center; flex-wrap:wrap;
+}
+.review-action-bar button {
+  padding:8px 18px; border:none; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;
+}
+.btn-rewrite { background:var(--accent-yellow); color:#1e1e2e; }
+.btn-rewrite:hover { filter:brightness(1.1); }
+.btn-accept { background:var(--accent-green); color:#1e1e2e; }
+.btn-accept:hover { filter:brightness(1.1); }
+.btn-skip-review { background:var(--bg-surface); color:var(--text-secondary); border:1px solid var(--border) !important; }
+.btn-skip-review:hover { border-color:var(--accent-blue) !important; color:var(--text-primary); }
+.edit-mode-hint {
+  font-size:11px; color:var(--accent-blue); text-align:center; margin-top:6px; font-style:italic;
+}
+
+/* Bot3 工具栏 */
+.bot3-toolbar {
+  display:flex; align-items:center; gap:8px; padding:6px 12px;
+  border-bottom:1px solid var(--border); background:var(--bg-surface); flex-shrink:0;
+}
+.bot3-tb-btn {
+  padding:4px 12px; background:var(--bg-tertiary); border:1px solid var(--border);
+  border-radius:5px; font-size:11px; color:var(--text-secondary); cursor:pointer; font-weight:600;
+}
+.bot3-tb-btn:hover { color:var(--text-primary); border-color:var(--accent-blue); }
+.bot3-prompt-label {
+  font-size:10px; color:var(--accent-purple); font-style:italic; margin-left:4px;
+}
+/* Bot3提示词列表条目 */
+.b3p-item {
+  display:flex; align-items:center; gap:8px; padding:6px 10px; cursor:pointer;
+  border-bottom:1px solid var(--border); font-size:12px; color:var(--text-secondary);
+}
+.b3p-item:last-child { border-bottom:none; }
+.b3p-item:hover { background:var(--bg-tertiary); }
+.b3p-item.active { background:rgba(203,166,247,.08); color:var(--accent-purple); font-weight:600; }
+.b3p-item .b3p-name { flex:1; }
+.b3p-item .b3p-use {
+  padding:2px 8px; font-size:10px; border:1px solid var(--accent-purple); border-radius:3px;
+  color:var(--accent-purple); background:transparent; cursor:pointer; font-weight:600;
+}
+.b3p-item .b3p-use:hover { background:rgba(203,166,247,.15); }
+.b3p-item .b3p-use.active-use { background:var(--accent-purple); color:#1e1e2e; }
+
+/* 逐条建议列表 */
+.review-items-section { margin-top:10px; }
+.review-items-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+.review-items-header .rih-title { font-size:12px; color:var(--text-muted); font-weight:600; }
+.btn-add-item {
+  padding:3px 10px; background:var(--accent-blue); color:#1e1e2e; border:none; border-radius:4px;
+  font-size:11px; font-weight:600; cursor:pointer;
+}
+.btn-add-item:hover { filter:brightness(1.1); }
+.review-item {
+  background:var(--bg-primary); border:1px solid var(--border); border-radius:8px;
+  padding:10px; margin-bottom:8px; position:relative;
+}
+.review-item.severity-high { border-left:3px solid var(--accent-red); }
+.review-item.severity-medium { border-left:3px solid var(--accent-yellow); }
+.review-item.severity-low { border-left:3px solid var(--accent-green); }
+.ri-top { display:flex; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap; }
+.ri-badge { padding:1px 6px; border-radius:3px; font-size:10px; font-weight:600; }
+.ri-badge.sev-high { background:rgba(243,139,168,.15); color:var(--accent-red); }
+.ri-badge.sev-medium { background:rgba(249,226,175,.15); color:var(--accent-yellow); }
+.ri-badge.sev-low { background:rgba(166,227,161,.15); color:var(--accent-green); }
+.ri-badge.dim-badge { background:rgba(137,180,250,.12); color:var(--accent-blue); }
+.ri-location { font-size:11px; color:var(--text-muted); }
+.ri-delete {
+  position:absolute; top:6px; right:6px; width:20px; height:20px;
+  background:none; border:none; color:var(--text-muted); font-size:14px;
+  cursor:pointer; border-radius:3px; display:flex; align-items:center; justify-content:center;
+}
+.ri-delete:hover { background:rgba(243,139,168,.2); color:var(--accent-red); }
+.ri-field { margin-bottom:4px; }
+.ri-field-label { font-size:10px; color:var(--text-muted); margin-bottom:2px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; }
+.ri-text { font-size:12px; line-height:1.5; color:var(--text-secondary); white-space:pre-wrap; word-break:break-word; }
+.ri-edit-input {
+  width:100%; padding:4px 6px; background:var(--bg-secondary); border:1px solid var(--border);
+  border-radius:4px; color:var(--text-secondary); font-size:12px; font-family:inherit; resize:vertical; min-height:24px;
+}
+.ri-edit-input:focus { border-color:var(--accent-blue); outline:none; }
+.ri-inline-select {
+  padding:1px 4px; background:var(--bg-secondary); border:1px solid var(--border);
+  border-radius:3px; color:var(--text-primary); font-size:10px; font-weight:600; cursor:pointer;
+}
+.ri-inline-select:focus { border-color:var(--accent-blue); outline:none; }
+
+/* 文风选择器和创作设置 */
+.writing-settings { padding:10px 0; }
+.writing-settings h4, .bot2-style-section h4 { font-size:12px; color:var(--accent-purple); margin-bottom:8px; font-weight:600; }
+.style-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:6px; margin-bottom:10px; }
+.style-card {
+  padding:8px; background:var(--bg-tertiary); border:1px solid var(--border); border-radius:6px;
+  cursor:pointer; font-size:11px; transition:all .15s;
+}
+.style-card:hover { border-color:var(--accent-blue); }
+.style-card.active { border-color:var(--accent-purple); background:rgba(203,166,247,.08); }
+.style-card .sc-name { font-weight:700; color:var(--text-primary); margin-bottom:2px; display:flex; align-items:center; gap:4px; }
+.style-card .sc-custom { font-size:9px; padding:0 4px; background:rgba(203,166,247,.15); color:var(--accent-purple); border-radius:3px; font-weight:600; }
+.style-card .sc-desc { color:var(--text-muted); font-size:10px; line-height:1.3; }
+.style-card .sc-actions { display:flex; gap:4px; margin-top:4px; }
+.style-card .sc-actions button {
+  padding:1px 6px; font-size:9px; border:1px solid var(--border); border-radius:3px;
+  background:var(--bg-secondary); color:var(--text-muted); cursor:pointer;
+}
+.style-card .sc-actions button:hover { color:var(--text-primary); border-color:var(--accent-blue); }
+.style-card .sc-actions button.sc-del:hover { color:var(--accent-red); border-color:var(--accent-red); }
+.style-toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.style-toolbar h4 { margin-bottom:0 !important; }
+.btn-import-style {
+  padding:3px 10px; background:var(--accent-purple); color:#1e1e2e; border:none; border-radius:4px;
+  font-size:10px; font-weight:600; cursor:pointer;
+}
+.btn-import-style:hover { filter:brightness(1.1); }
+
+/* 文风编辑弹窗 */
+.style-modal-overlay {
+  display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:10000;
+  background:rgba(0,0,0,.55); justify-content:center; align-items:center;
+}
+.style-modal-overlay.show { display:flex; }
+.style-modal {
+  background:var(--bg-surface); border:1px solid var(--border); border-radius:12px;
+  padding:20px; width:520px; max-width:90vw; max-height:85vh; overflow-y:auto;
+  box-shadow:0 12px 48px rgba(0,0,0,.5);
+}
+.style-modal h3 { font-size:15px; color:var(--accent-purple); margin-bottom:14px; }
+.sm-field { margin-bottom:12px; }
+.sm-field label { display:block; font-size:11px; color:var(--text-muted); font-weight:600; margin-bottom:4px; text-transform:uppercase; letter-spacing:.5px; }
+.sm-field input, .sm-field textarea {
+  width:100%; padding:8px 10px; background:var(--bg-primary); border:1px solid var(--border);
+  border-radius:6px; color:var(--text-primary); font-size:13px; font-family:inherit;
+}
+.sm-field input:focus, .sm-field textarea:focus { border-color:var(--accent-purple); outline:none; }
+.sm-field textarea { min-height:120px; resize:vertical; line-height:1.6; font-size:12px; }
+.sm-field .sm-hint { font-size:10px; color:var(--text-muted); margin-top:3px; font-style:italic; }
+.sm-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
+.sm-actions button { padding:8px 20px; border:none; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; }
+.sm-btn-save { background:var(--accent-purple); color:#1e1e2e; }
+.sm-btn-save:hover { filter:brightness(1.1); }
+.sm-btn-cancel { background:var(--bg-tertiary); color:var(--text-secondary); border:1px solid var(--border) !important; }
+.sm-btn-cancel:hover { color:var(--text-primary); }
+.sm-or-divider { display:flex; align-items:center; gap:10px; margin:14px 0; color:var(--text-muted); font-size:11px; }
+.sm-or-divider::before, .sm-or-divider::after { content:''; flex:1; border-top:1px solid var(--border); }
+.sm-file-drop {
+  border:2px dashed var(--border); border-radius:8px; padding:16px; text-align:center;
+  cursor:pointer; transition:all .15s; color:var(--text-muted); font-size:12px;
+}
+.sm-file-drop:hover, .sm-file-drop.dragover { border-color:var(--accent-purple); color:var(--accent-purple); background:rgba(203,166,247,.04); }
+
+.style-preview {
+  margin-top:8px; padding:8px; background:var(--bg-primary); border:1px solid var(--border);
+  border-radius:6px; font-size:11px; line-height:1.6; color:var(--text-secondary);
+  max-height:120px; overflow-y:auto; display:none;
+}
+.style-preview.show { display:block; }
+
+/* Bot2 创作设置工具栏 */
+.bot2-settings {
+  border-bottom:1px solid var(--border); background:var(--bg-surface);
+  flex-shrink:0;
+}
+.bot2-settings-header {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:8px 12px; cursor:pointer; user-select:none;
+  font-size:13px; font-weight:600; color:var(--accent-purple);
+}
+.bot2-settings-header:hover { background:var(--bg-tertiary); }
+.bot2-settings-toggle { font-size:10px; transition:transform .2s; }
+.bot2-settings-toggle.collapsed { transform:rotate(-90deg); }
+.bot2-settings-body {
+  padding:8px 12px 12px; overflow:hidden; transition:max-height .25s ease, padding .25s ease;
+  max-height:500px;
+}
+.bot2-settings-body.collapsed {
+  max-height:0; padding-top:0; padding-bottom:0;
+}
+.bot2-row {
+  display:flex; gap:16px; align-items:flex-start;
+}
+.bot2-style-section { flex:1; min-width:0; }
+.bot2-style-section .writing-settings { padding:0; }
+.bot2-style-section .style-grid { grid-template-columns:repeat(auto-fill, minmax(110px, 1fr)); }
+.bot2-wc-section { width:220px; flex-shrink:0; }
+.bot2-wc-section h4 { font-size:12px; color:var(--accent-purple); margin-bottom:8px; font-weight:600; }
+
+.word-count-row { display:flex; align-items:center; gap:8px; margin-top:6px; }
+.word-count-row label { font-size:11px; color:var(--text-secondary); white-space:nowrap; }
+.word-count-row input {
+  width:80px; padding:4px 6px; background:var(--bg-primary); border:1px solid var(--border);
+  border-radius:4px; color:var(--text-primary); font-size:12px; text-align:center;
+}
+.word-count-row input:focus { border-color:var(--accent-blue); outline:none; }
+.word-count-row .wc-presets { display:flex; gap:4px; }
+.word-count-row .wc-preset {
+  padding:2px 8px; background:var(--bg-tertiary); border:1px solid var(--border);
+  border-radius:4px; font-size:10px; color:var(--text-muted); cursor:pointer;
+}
+.word-count-row .wc-preset:hover { color:var(--text-primary); border-color:var(--accent-blue); }
+
+.review-history-item { padding:8px 10px; margin-bottom:6px; background:var(--bg-tertiary); border-radius:6px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; font-size:12px; }
+.review-history-item:hover { border:1px solid var(--accent-blue); }
+
+/* 右侧面板 */
+.right-panel { width:320px; min-width:260px; background:var(--bg-secondary); border-left:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; }
+.right-tabs { display:flex; border-bottom:1px solid var(--border); }
+.right-tab { flex:1; padding:8px; text-align:center; font-size:12px; color:var(--text-muted); cursor:pointer; user-select:none; }
+.right-tab:hover { color:var(--text-secondary); }
+.right-tab.active { color:var(--accent-blue); border-bottom:2px solid var(--accent-blue); }
+.right-body { flex:1; overflow-y:auto; padding:10px; }
+
+.log-entry { padding:5px 0; border-bottom:1px solid var(--bg-tertiary); font-size:12px; line-height:1.5; }
+.log-entry .lt { color:var(--text-muted); margin-right:6px; }
+.log-entry .lb { font-weight:600; margin-right:4px; }
+.log-entry.bot1 .lb { color:var(--accent-blue); }
+.log-entry.bot2 .lb { color:var(--accent-green); }
+.log-entry.bot3 .lb { color:var(--accent-yellow); }
+.log-entry.bot4 .lb { color:var(--accent-purple); }
+.log-entry.system .lb { color:var(--accent-teal); }
+.log-entry.error .lb { color:var(--accent-red); }
+
+.badge { padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; }
+.badge-pass { background:rgba(166,227,161,.15); color:var(--accent-green); }
+.badge-fail { background:rgba(243,139,168,.15); color:var(--accent-red); }
+
+.status-bar { height:24px; background:var(--bg-secondary); border-top:1px solid var(--border); display:flex; align-items:center; padding:0 12px; font-size:11px; color:var(--text-muted); gap:16px; }
+.sd { width:6px; height:6px; border-radius:50%; display:inline-block; margin-right:4px; }
+.sd.ready { background:var(--accent-green); }
+.sd.busy { background:var(--accent-yellow); animation:pulse 1s infinite; }
+.sd.error { background:var(--accent-red); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+.spinner { display:inline-block; width:12px; height:12px; border:2px solid var(--text-muted); border-top-color:var(--accent-blue); border-radius:50%; animation:spin .5s linear infinite; }
+@keyframes spin { to{transform:rotate(360deg)} }
+</style>
+</head>
+<body>
+
+<div class="title-bar">
+  <span class="logo">&#9997; NovelForge</span>
+  <span class="sep">|</span>
+
+  <!-- 项目菜单 -->
+  <div style="position:relative">
+    <button class="menu-btn" onclick="toggleMenu('projectMenu')">&#128193; 项目 <span id="projectMenuLabel" style="color:var(--accent-teal);font-size:11px"></span> &#9662;</button>
+    <div class="dropdown-panel" id="projectMenu">
+      <h4>当前项目</h4>
+      <div class="dd-row">
+        <div class="fg"><input id="projectName" placeholder="我的小说" value="我的小说" style="font-size:13px;padding:6px 10px"/></div>
+      </div>
+      <div class="dd-row">
+        <button class="btn-sm" onclick="saveProject()" style="flex:1">&#128190; 保存</button>
+        <button class="btn-sm" onclick="exportProject()" style="flex:1">&#128196; 导出TXT</button>
+        <button class="btn-sm" onclick="newProject()" style="flex:1">&#10010; 新建</button>
+        <button class="btn-sm" onclick="deleteCurrentProject()" style="color:var(--accent-red);border-color:var(--accent-red)">&#128465;</button>
+      </div>
+      <div class="dd-sep"></div>
+      <h4>已保存的项目</h4>
+      <div id="projectList"><div style="font-size:11px;color:var(--text-muted)">无</div></div>
+    </div>
+  </div>
+
+  <!-- 配置方案菜单 -->
+  <div style="position:relative">
+    <button class="menu-btn" onclick="toggleMenu('configMenu')">&#128273; 配置 <span id="configMenuLabel" style="color:var(--accent-green);font-size:11px"></span> &#9662;</button>
+    <div class="dropdown-panel" id="configMenu">
+      <h4>保存当前配置</h4>
+      <div class="dd-row">
+        <div class="fg"><input id="configProfileName" placeholder="默认配置" value="默认配置" style="font-size:13px;padding:6px 10px"/></div>
+        <button class="btn-sm" onclick="saveConfigProfile()">&#128190; 保存</button>
+      </div>
+      <div class="dd-sep"></div>
+      <h4>已保存的配置方案</h4>
+      <div id="configProfileList"><div style="font-size:11px;color:var(--text-muted)">无已保存方案</div></div>
+    </div>
+  </div>
+
+  <span style="flex:1"></span>
+  <span id="statusText" style="font-size:12px">就绪</span>
+</div>
+
+<div class="app">
+  <!-- 左侧配置 -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <h3><span class="dot" style="background:var(--accent-blue)"></span>Bot1 - 大纲策划师</h3>
+      <div class="fg"><label>API地址</label><input id="bot1_url" placeholder="https://api.example.com/v1"/></div>
+      <div class="fg"><label>API密钥</label><input type="password" id="bot1_key" placeholder="sk-..."/></div>
+      <div class="model-row"><div class="fg"><label>模型</label><select id="bot1_model"><option value="">先获取列表</option></select></div><button class="btn-sm" onclick="fetchModels('bot1')">获取</button></div>
+    </div>
+    <div class="sidebar-section">
+      <h3><span class="dot" style="background:var(--accent-green)"></span>Bot2 - 内容创作师 <span style="font-size:9px;color:var(--text-muted);text-transform:none;letter-spacing:0">空则用Bot1</span></h3>
+      <div class="fg"><label>API地址</label><input id="bot2_url" placeholder="留空则使用Bot1配置"/></div>
+      <div class="fg"><label>API密钥</label><input type="password" id="bot2_key" placeholder="留空则使用Bot1配置"/></div>
+      <div class="model-row"><div class="fg"><label>模型</label><select id="bot2_model"><option value="">留空则用Bot1模型</option></select></div><button class="btn-sm" onclick="fetchModels('bot2')">获取</button></div>
+    </div>
+    <div class="sidebar-section">
+      <h3><span class="dot" style="background:var(--accent-yellow)"></span>Bot3 - 质量审核师 <span style="font-size:9px;color:var(--text-muted);text-transform:none;letter-spacing:0">空则用Bot1</span></h3>
+      <div class="fg"><label>API地址</label><input id="bot3_url" placeholder="留空则使用Bot1配置"/></div>
+      <div class="fg"><label>API密钥</label><input type="password" id="bot3_key" placeholder="留空则使用Bot1配置"/></div>
+      <div class="model-row"><div class="fg"><label>模型</label><select id="bot3_model"><option value="">留空则用Bot1模型</option></select></div><button class="btn-sm" onclick="fetchModels('bot3')">获取</button></div>
+    </div>
+    <div class="sidebar-section">
+      <h3><span class="dot" style="background:var(--accent-purple)"></span>Bot4 - 记忆管理师 <span style="font-size:9px;color:var(--text-muted);text-transform:none;letter-spacing:0">空则用Bot1</span></h3>
+      <div class="fg"><label>API地址</label><input id="bot4_url" placeholder="留空则使用Bot1配置"/></div>
+      <div class="fg"><label>API密钥</label><input type="password" id="bot4_key" placeholder="留空则使用Bot1配置"/></div>
+      <div class="model-row"><div class="fg"><label>模型</label><select id="bot4_model"><option value="">留空则用Bot1模型</option></select></div><button class="btn-sm" onclick="fetchModels('bot4')">获取</button></div>
+    </div>
+    <div class="sidebar-section">
+      <h3>全局设置</h3>
+      <div class="config-row">
+        <div class="fg"><label>及格分(1-10)</label><input type="number" id="passScore" value="8" min="1" max="10" step="0.5"/></div>
+        <div class="fg"><label>最大重写</label><input type="number" id="maxRetries" value="3" min="1" max="10"/></div>
+      </div>
+      <button class="btn-copy" onclick="copyBot1ToAll()">&#128260; 将Bot1配置复制到所有Bot</button>
+    </div>
+    <div class="sidebar-section" style="flex:1">
+      <h3>&#128214; 章节历史</h3>
+      <div id="chapterList"><div style="font-size:12px;color:var(--text-muted);padding:6px">尚无已完成章节</div></div>
+    </div>
+  </div>
+
+  <!-- 中间主面板 -->
+  <div class="center">
+    <div class="pipeline-bar" id="pipelineBar">
+      <div class="p-step" id="ps-bot1">Bot1 策划</div><span class="p-arrow">&#8594;</span>
+      <div class="p-step" id="ps-bot2">Bot2 创作</div><span class="p-arrow">&#8594;</span>
+      <div class="p-step" id="ps-bot3">Bot3 审核</div><span class="p-arrow">&#8594;</span>
+      <div class="p-step" id="ps-bot4">Bot4 记忆</div>
+      <span style="flex:1"></span>
+      <button class="btn-outline" id="btnStop" style="display:none;padding:3px 12px;font-size:11px" onclick="stopAll()">&#9632; 停止</button>
+    </div>
+
+    <div class="tab-bar">
+      <div class="tab active" onclick="switchTab('bot1')" id="tab-bot1">&#128172; Bot1 策划对话</div>
+      <div class="tab" onclick="switchTab('content')" id="tab-content">&#128214; Bot2 正文</div>
+      <div class="tab" onclick="switchTab('review')" id="tab-review">&#128270; Bot3 审核</div>
+      <div class="tab" onclick="switchTab('summary')" id="tab-summary">&#129504; Bot4 记忆</div>
+    </div>
+
+    <div class="tab-body">
+      <!-- Bot1 面板 -->
+      <div class="pane active" id="pane-bot1">
+        <div class="bot1-layout">
+          <div class="chat-side">
+            <!-- 聊天工具栏：清空 -->
+            <div class="chat-header">
+              <button class="btn-sm" onclick="clearChat()" title="清空全部对话">&#128465; 清空对话</button>
+            </div>
+            <div class="chat-messages" id="chatMessages">
+              <div class="chat-welcome" style="text-align:center;color:var(--text-muted);font-size:13px;padding:40px 20px;">
+                &#128075; 向Bot1描述你的创作想法<br>它会和你对话并实时生成大纲<br>满意后点击右侧「确认大纲，开始创作」
+              </div>
+            </div>
+            <div class="chat-input-bar">
+              <textarea id="chatInput" rows="2" placeholder="描述你的小说创意，或对大纲提出修改意见..." onkeydown="chatKeydown(event)"></textarea>
+              <button class="btn-send" id="btnSend" onclick="sendChat()">发送</button>
+            </div>
+          </div>
+          <div class="outline-side">
+            <div class="outline-header">
+              <h4>&#128203; 大纲预览</h4>
+              <span class="badge-live" id="outlineLive" style="display:none">&#9679; 实时更新中</span>
+            </div>
+            <div class="outline-body empty" id="outlinePreview">大纲将在对话过程中自动生成和更新</div>
+            <div class="outline-actions">
+              <button class="btn-primary" id="btnConfirmOutline" onclick="confirmOutline()" disabled>&#10004; 确认大纲，开始创作</button>
+              <button class="btn-outline" id="btnNewChat" onclick="newChat()">&#128260; 新对话</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bot2 正文面板 -->
+      <div class="pane" id="pane-content">
+        <div class="error-banner" id="errContent">
+          <div class="eb-title">&#9888; 出错了</div>
+          <div class="eb-msg" id="errContentMsg"></div>
+          <div class="eb-actions">
+            <button class="eb-btn-retry" id="errContentRetry">&#128260; 重试当前步骤</button>
+            <button class="eb-btn-restart" onclick="restartPipeline()">&#9664; 从头开始</button>
+          </div>
+        </div>
+        <!-- 创作设置工具栏 -->
+        <div class="bot2-settings" id="bot2Settings">
+          <div class="bot2-settings-header" onclick="toggleBot2Settings()">
+            <span>&#9997; 创作设置</span>
+            <span class="bot2-settings-toggle" id="bot2SettingsArrow">&#9660;</span>
+          </div>
+          <div class="bot2-settings-body" id="bot2SettingsBody">
+            <div class="bot2-row">
+              <div class="bot2-style-section">
+                <div class="style-toolbar">
+                  <h4>文风选择</h4>
+                  <button class="btn-import-style" onclick="openStyleModal()">+ 导入文风</button>
+                </div>
+                <div class="style-grid" id="styleGrid">
+                  <div style="font-size:11px;color:var(--text-muted);grid-column:1/-1">加载中...</div>
+                </div>
+                <div class="style-preview" id="stylePreview"></div>
+              </div>
+              <div class="bot2-wc-section">
+                <h4>目标字数</h4>
+                <div class="word-count-row">
+                  <input type="number" id="wordCountInput" value="800" min="200" max="5000" step="100">
+                  <label>字</label>
+                  <div class="wc-presets">
+                    <span class="wc-preset" onclick="$('wordCountInput').value=500">500</span>
+                    <span class="wc-preset" onclick="$('wordCountInput').value=800">800</span>
+                    <span class="wc-preset" onclick="$('wordCountInput').value=1500">1500</span>
+                    <span class="wc-preset" onclick="$('wordCountInput').value=3000">3000</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="output-area empty" id="contentOutput" style="flex:1;min-height:0;">等待Bot2创作内容...</div>
+      </div>
+
+      <!-- Bot3 审核面板 -->
+      <div class="pane" id="pane-review">
+        <div class="error-banner" id="errReview">
+          <div class="eb-title">&#9888; 审核出错</div>
+          <div class="eb-msg" id="errReviewMsg"></div>
+          <div class="eb-actions">
+            <button class="eb-btn-retry" id="errReviewRetry">&#128260; 重试审核</button>
+            <button class="eb-btn-restart" onclick="restartPipeline()">&#9664; 从头开始</button>
+          </div>
+        </div>
+        <!-- Bot3 工具栏 -->
+        <div class="bot3-toolbar" id="bot3Toolbar">
+          <button class="bot3-tb-btn" onclick="manualReReview()" id="btnReReview" title="对当前内容重新发起一次Bot3审核">&#128260; 重新审计</button>
+          <button class="bot3-tb-btn" onclick="openBot3PromptModal()" title="管理Bot3的审核提示词">&#9881; 自定义提示词</button>
+          <span class="bot3-prompt-label" id="bot3PromptLabel"></span>
+        </div>
+        <div class="review-pane-inner">
+          <div class="review-full">
+            <div class="rsb" id="reviewScorePanel">
+              <div style="text-align:center;color:var(--text-muted);padding:30px;font-size:13px;font-style:italic;">尚无审核结果</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bot4 记忆面板 -->
+      <div class="pane" id="pane-summary">
+        <div class="error-banner" id="errSummary">
+          <div class="eb-title">&#9888; 总结出错</div>
+          <div class="eb-msg" id="errSummaryMsg"></div>
+          <div class="eb-actions">
+            <button class="eb-btn-retry" id="errSummaryRetry">&#128260; 重试总结</button>
+            <button class="eb-btn-restart" onclick="restartPipeline()">&#9664; 从头开始</button>
+          </div>
+        </div>
+        <div class="output-area empty" id="summaryOutput">等待Bot4生成记忆总结...</div>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <span><span class="sd ready" id="statusDot"></span><span id="statusLabel">就绪</span></span>
+      <span id="chapterInfo">新章节</span>
+      <span style="flex:1"></span>
+      <span id="wordCount"></span>
+      <span id="retryInfo"></span>
+    </div>
+  </div>
+
+  <!-- 右侧 -->
+  <div class="right-panel">
+    <div class="right-tabs">
+      <div class="right-tab active" onclick="switchRight('log')" id="rt-log">运行日志</div>
+      <div class="right-tab" onclick="switchRight('rhistory')" id="rt-rhistory">审核历史</div>
+    </div>
+    <div class="right-body">
+      <div id="logPanel"><div class="log-entry system"><span class="lt">[系统]</span><span>欢迎使用NovelForge v2.2</span></div></div>
+      <div id="rhistoryPanel" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const S = {
+  chatHistory: [],
+  currentOutline: '',
+  currentContent: '',
+  currentSummary: '',
+  chapters: [],
+  reviews: [],
+  logs: [],              // [{bot, msg, time}] 持久化日志
+  accumulatedTips: [],   // 改进4: 历史审核经验（错题本），最多保留10条
+  abortCtrl: null,
+  isGenerating: false,
+  pipelineState: null,
+};
+
+// ---- 改进3: 构建Bot1增强上下文（章节脉络 + 故事记忆）----
+function buildBot1Context(){
+  let parts=[];
+  if(S.chapters.length>0){
+    const outlines=S.chapters.map((ch,i)=>{
+      // 从大纲中提取第一行作为标题
+      const firstLine=(ch.outline||'').split('\n').find(l=>l.trim())||`第${i+1}章`;
+      return `第${i+1}章：${firstLine.replace(/^#+\s*/,'').substring(0,40)}`;
+    });
+    parts.push('【已完成章节脉络】\n'+outlines.join('\n'));
+  }
+  if(S.currentSummary){
+    parts.push('【故事记忆】\n'+S.currentSummary);
+  }
+  return parts.join('\n\n');
+}
+
+// ---- 改进4: 获取累积的审核tips文本 ----
+function getTipsText(){
+  if(!S.accumulatedTips||S.accumulatedTips.length===0) return '';
+  return S.accumulatedTips.map((t,i)=>`${i+1}. ${t}`).join('\n');
+}
+
+// ---- 改进5: 获取上一章结尾片段（最多500字）----
+function getPrevEnding(maxLen){
+  maxLen=maxLen||500;
+  if(S.chapters.length===0) return '';
+  const lastContent=S.chapters[S.chapters.length-1].content||'';
+  if(!lastContent) return '';
+  return lastContent.length<=maxLen ? lastContent : lastContent.slice(-maxLen);
+}
+
+// ---- 改进6: 记忆压缩（当summary超过阈值时调用）----
+const SUMMARY_COMPRESS_THRESHOLD=3000; // 超过3000字触发压缩
+async function maybeCompressSummary(config){
+  if(!S.currentSummary||S.currentSummary.length<=SUMMARY_COMPRESS_THRESHOLD) return;
+  addLog('system',`记忆总结已达${S.currentSummary.length}字，正在压缩...`);
+  try{
+    const compressed=await readSSE('/api/compress-summary',{summary:S.currentSummary,config,max_chars:800},(chunk,full)=>{},null);
+    if(compressed&&compressed.trim()){
+      const oldLen=S.currentSummary.length;
+      S.currentSummary=compressed;
+      addLog('system',`记忆压缩完成: ${oldLen}字 → ${compressed.length}字`);
+    }
+  }catch(e){
+    addLog('error',`记忆压缩失败(不影响创作): ${e.message}`);
+  }
+}
+
+// ---- 改进4: 从审核结果中提取low建议追加到tips ----
+function collectTipsFromReview(review){
+  if(!review||!review.items) return;
+  const DIM_LABEL={literary:'文学性',logic:'逻辑性',style:'风格一致性',ai_feel:'人味'};
+  const lowItems=review.items.filter(it=>it.severity==='low');
+  lowItems.forEach(it=>{
+    const tip=`[${DIM_LABEL[it.dim]||it.dim}] ${it.location||'全文'}: ${it.problem}`;
+    // 去重
+    if(!S.accumulatedTips.includes(tip)){
+      S.accumulatedTips.push(tip);
+    }
+  });
+  // 保留最近10条
+  if(S.accumulatedTips.length>10) S.accumulatedTips=S.accumulatedTips.slice(-10);
+}
+
+const $ = id => document.getElementById(id);
+const now = () => { const d=new Date(); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`; };
+
+function addLog(bot,msg){
+  const t=now();
+  S.logs.push({bot,msg,time:t});
+  if(S.logs.length>200) S.logs=S.logs.slice(-200); // 限制大小
+  const e=document.createElement('div');e.className=`log-entry ${bot}`;e.innerHTML=`<span class="lt">[${t}]</span><span class="lb">[${bot.toUpperCase()}]</span><span>${msg}</span>`;$('logPanel').appendChild(e);$('logPanel').scrollTop=99999;
+}
+function setStatus(cls,text){$('statusDot').className='sd '+cls;$('statusLabel').textContent=text;$('statusText').textContent=text;}
+function switchTab(name){document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));$('tab-'+name).classList.add('active');$('pane-'+name).classList.add('active');}
+function switchRight(name){document.querySelectorAll('.right-tab').forEach(t=>t.classList.remove('active'));$('rt-'+name).classList.add('active');$('logPanel').style.display=name==='log'?'':'none';$('rhistoryPanel').style.display=name==='rhistory'?'':'none';}
+function setStep(id,cls){$(id).className='p-step '+cls;}
+function hideAllErrors(){['errContent','errReview','errSummary'].forEach(id=>$(id).classList.remove('show'));}
+
+// 顶部下拉菜单
+function toggleMenu(id){
+  const panel=$(id);
+  const isOpen=panel.classList.contains('show');
+  // 关闭所有菜单
+  document.querySelectorAll('.dropdown-panel').forEach(p=>p.classList.remove('show'));
+  document.querySelectorAll('.menu-btn').forEach(b=>b.classList.remove('open'));
+  if(!isOpen){
+    panel.classList.add('show');
+    panel.previousElementSibling.classList.add('open');
+  }
+}
+// 点击外部关闭菜单
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.menu-btn')&&!e.target.closest('.dropdown-panel')){
+    document.querySelectorAll('.dropdown-panel').forEach(p=>p.classList.remove('show'));
+    document.querySelectorAll('.menu-btn').forEach(b=>b.classList.remove('open'));
+  }
+});
+
+// Bot2-4未填写时自动回退到Bot1配置（界面不填充，只在运行时回退）
+function _botCfg(name,temp,maxTk){
+  const url=$(name+'_url').value, key=$(name+'_key').value, model=$(name+'_model').value;
+  // 如果该bot有完整配置就用自己的，否则回退bot1
+  if(url&&key&&model) return{base_url:url,api_key:key,model:model,temperature:temp,max_tokens:maxTk};
+  return{base_url:$('bot1_url').value,api_key:$('bot1_key').value,model:$('bot1_model').value,temperature:temp,max_tokens:maxTk};
+}
+function getConfig(){return{
+  bot1:_botCfg('bot1',0.7,4096),
+  bot2:_botCfg('bot2',0.8,8192),
+  bot3:_botCfg('bot3',0.3,2048),
+  bot4:_botCfg('bot4',0.5,4096),
+  pass_score:parseFloat($('passScore').value)||8,max_retries:parseInt($('maxRetries').value)||3,
+};}
+
+// 只验证Bot1必填，Bot2-4可选（空则回退Bot1）
+function validateAll(){
+  if(!$('bot1_url').value||!$('bot1_key').value||!$('bot1_model').value){alert('请至少填写Bot1的完整API配置（Bot2-4未填写将自动使用Bot1配置）');return false;}
+  return true;
+}
+function validateBot(n){
+  if(n==='bot1') return validateAll();
+  return true; // bot2-4不强制
+}
+function copyBot1ToAll(){['bot2','bot3','bot4'].forEach(b=>{$(b+'_url').value=$('bot1_url').value;$(b+'_key').value=$('bot1_key').value;const s=$('bot1_model'),d=$(b+'_model');d.innerHTML=s.innerHTML;d.value=s.value;});addLog('system','已将Bot1配置复制到所有Bot');}
+
+// 获取模型
+async function fetchModels(bot){
+  const url=$(bot+'_url').value,key=$(bot+'_key').value;
+  if(!url||!key){alert('请先填写API地址和密钥');return;}
+  const sel=$(bot+'_model');sel.innerHTML='<option value="">获取中...</option>';
+  try{const r=await fetch('/api/models',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base_url:url,api_key:key})});const d=await r.json();if(d.error)throw new Error(d.error);sel.innerHTML='';if(!d.models||!d.models.length){sel.innerHTML='<option value="">无可用模型</option>';return;}d.models.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o);});addLog(bot,`获取到 ${d.models.length} 个模型`);autoSaveConfigAfterModelFetch();}
+  catch(e){sel.innerHTML='<option value="">获取失败</option>';addLog('error',`${bot}获取模型失败: ${e.message}`);}
+}
+
+// ============================================================
+// SSE读取 - 不自动重试，出错直接抛
+// ============================================================
+async function readSSE(url,body,onChunk,signal){
+  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});
+  if(!r.ok){const t=await r.text();throw new Error(`HTTP ${r.status}: ${t.slice(0,200)}`);}
+  const reader=r.body.getReader(),dec=new TextDecoder();
+  let buf='',full='';
+  while(true){
+    const{done,value}=await reader.read();
+    if(done)break;
+    buf+=dec.decode(value,{stream:true});
+    const lines=buf.split('\n');buf=lines.pop()||'';
+    for(const line of lines){
+      if(!line.startsWith('data: '))continue;
+      const d=line.slice(6).trim();
+      if(d==='[DONE]')return full;
+      try{const o=JSON.parse(d);if(o.error)throw new Error(o.error);if(o.content){full+=o.content;if(onChunk)onChunk(o.content,full);}}
+      catch(pe){if(pe.message&&!pe.message.includes('Unexpected'))throw pe;}
+    }
+  }
+  return full;
+}
+
+// outline提取
+function extractOutline(text){const m=text.match(/<outline>([\s\S]*?)<\/outline>/i);return m?m[1].trim():null;}
+function stripOutline(text){return text.replace(/<outline>[\s\S]*?<\/outline>/gi,'').trim();}
+
+// ============================================================
+// Bot1 对话 + 删除/清空
+// ============================================================
+function appendMsg(role,content,idx){
+  const wrap=document.createElement('div');
+  wrap.className='msg '+role;
+  wrap.dataset.idx=idx;
+  const label=role==='user'?'你':'Bot1 · 大纲策划师';
+  wrap.innerHTML=`<div class="msg-label">${label}</div><div class="msg-text"></div><button class="msg-del" title="删除此消息" onclick="deleteMsg(${idx})">&#10005;</button>`;
+  wrap.querySelector('.msg-text').textContent=content;
+  $('chatMessages').appendChild(wrap);
+  $('chatMessages').scrollTop=99999;
+  return wrap;
+}
+
+function deleteMsg(idx){
+  if(S.isGenerating)return;
+  if(idx<0||idx>=S.chatHistory.length)return;
+  // 删除该条及之后所有消息（保持对话一致性）
+  const removeCount=S.chatHistory.length-idx;
+  S.chatHistory.splice(idx,removeCount);
+  rebuildChatUI();
+  // 重新从历史中提取最新大纲
+  recalcOutlineFromHistory();
+  addLog('system',`已删除第${idx+1}条及之后共${removeCount}条消息`);
+}
+
+function clearChat(){
+  if(S.isGenerating)return;
+  if(S.chatHistory.length===0)return;
+  if(!confirm('确定清空所有对话消息？大纲也会被清除。'))return;
+  S.chatHistory=[];
+  S.currentOutline='';
+  rebuildChatUI();
+  $('outlinePreview').textContent='大纲将在对话过程中自动生成和更新';
+  $('outlinePreview').className='outline-body empty';
+  $('btnConfirmOutline').disabled=true;
+  addLog('system','已清空全部对话');
+}
+
+function rebuildChatUI(){
+  $('chatMessages').innerHTML='';
+  if(S.chatHistory.length===0){
+    $('chatMessages').innerHTML='<div class="chat-welcome" style="text-align:center;color:var(--text-muted);font-size:13px;padding:40px 20px;">&#128075; 向Bot1描述你的创作想法<br>它会和你对话并实时生成大纲<br>满意后点击右侧「确认大纲，开始创作」</div>';
+    return;
+  }
+  S.chatHistory.forEach((m,i)=>{
+    const displayText=m.role==='assistant'?stripOutline(m.content):m.content;
+    appendMsg(m.role,displayText,i);
+  });
+}
+
+function recalcOutlineFromHistory(){
+  // 从最后一条assistant消息中提取outline
+  let found=false;
+  for(let i=S.chatHistory.length-1;i>=0;i--){
+    if(S.chatHistory[i].role==='assistant'){
+      const ol=extractOutline(S.chatHistory[i].content);
+      if(ol){S.currentOutline=ol;$('outlinePreview').textContent=ol;$('outlinePreview').className='outline-body';$('btnConfirmOutline').disabled=false;found=true;break;}
+    }
+  }
+  if(!found){S.currentOutline='';$('outlinePreview').textContent='大纲将在对话过程中自动生成和更新';$('outlinePreview').className='outline-body empty';$('btnConfirmOutline').disabled=true;}
+}
+
+function chatKeydown(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}
+
+async function sendChat(){
+  if(S.isGenerating)return;
+  if(!validateBot('bot1'))return;
+  const text=$('chatInput').value.trim();
+  if(!text)return;
+  $('chatInput').value='';
+  const userIdx=S.chatHistory.length;
+  S.chatHistory.push({role:'user',content:text});
+  appendMsg('user',text,userIdx);
+
+  S.isGenerating=true;S.abortCtrl=new AbortController();
+  $('btnSend').disabled=true;$('outlineLive').style.display='';
+  setStatus('busy','Bot1思考中...');addLog('bot1','正在回复...');
+
+  const assistIdx=S.chatHistory.length; // 预留位置
+  const bubble=appendMsg('assistant','',assistIdx);
+  const textEl=bubble.querySelector('.msg-text');
+  textEl.innerHTML='<span class="typing-cursor"></span>';
+
+  try{
+    const config=getConfig();
+    const fullText=await readSSE('/api/bot1/chat',{messages:S.chatHistory,config,context:buildBot1Context()},
+    (chunk,full)=>{
+      textEl.textContent=stripOutline(full)||'...';
+      const ol=extractOutline(full);
+      if(ol){$('outlinePreview').textContent=ol;$('outlinePreview').className='outline-body';S.currentOutline=ol;$('btnConfirmOutline').disabled=false;}
+      $('chatMessages').scrollTop=99999;
+    },S.abortCtrl.signal);
+
+    S.chatHistory.push({role:'assistant',content:fullText});
+    bubble.dataset.idx=assistIdx;
+    textEl.textContent=stripOutline(fullText);
+    const ol=extractOutline(fullText);
+    if(ol){S.currentOutline=ol;$('outlinePreview').textContent=ol;$('outlinePreview').className='outline-body';$('btnConfirmOutline').disabled=false;}
+    addLog('bot1','回复完成');setStatus('ready','就绪 - 可继续对话或确认大纲');
+    _autoSave();
+  }catch(e){
+    if(e.name==='AbortError'){addLog('system','已停止');}
+    else{addLog('error',`Bot1错误: ${e.message}`);setStatus('error','Bot1出错');}
+    textEl.textContent=textEl.textContent||'(生成失败，请重试)';
+  }
+  S.isGenerating=false;$('btnSend').disabled=false;$('outlineLive').style.display='none';
+}
+
+function newChat(){
+  S.chatHistory=[];S.currentOutline='';
+  rebuildChatUI();
+  $('outlinePreview').textContent='大纲将在对话过程中自动生成和更新';
+  $('outlinePreview').className='outline-body empty';
+  $('btnConfirmOutline').disabled=true;
+  addLog('system','已开始新对话');
+}
+
+// ============================================================
+// 显示错误+重试按钮
+// ============================================================
+function showError(bannerId, msg, retryFn){
+  const banner=$(bannerId);
+  banner.classList.add('show');
+  banner.querySelector('.eb-msg').textContent=msg;
+  const retryBtn=banner.querySelector('.eb-btn-retry');
+  retryBtn.onclick=()=>{banner.classList.remove('show');retryFn();};
+}
+
+function restartPipeline(){
+  hideAllErrors();
+  S.pipelineState=null;
+  resetPipeline();
+  setStatus('ready','已重置，请重新确认大纲开始创作');
+  addLog('system','用户选择从头开始');
+  switchTab('bot1');
+}
+
+// ============================================================
+// Bot3审核面板渲染（新版：文学性/逻辑性/风格一致性/AI感 + 逐条可编辑建议）
+// ============================================================
+const REVIEW_DIMS=[
+  {key:'literary',label:'文学性',desc:'语言表现力、修辞、叙事技巧'},
+  {key:'logic',label:'逻辑性',desc:'情节因果、前后自洽'},
+  {key:'style',label:'风格一致性',desc:'与大纲/上下文风格匹配'},
+  {key:'ai_feel',label:'人味(越高越自然)',desc:'越像真人写作分越高，AI痕迹越少'},
+];
+const DIM_LABEL_MAP={literary:'文学性',logic:'逻辑性',style:'风格一致性',ai_feel:'人味'};
+const SEV_LABEL={high:'必须改',medium:'建议改',low:'可选改'};
+
+function scoreColor(v){if(v>=8)return'var(--accent-green)';if(v>=6)return'var(--accent-yellow)';return'var(--accent-red)';}
+
+// editable: 是否可编辑; showActions: 是否显示用户决策按钮
+function renderReviewPanel(review, attempt, editable, showActions){
+  const sc=review.scores||{},avg=review.average||0,p=review.passed;
+  const items=review.items||[];
+
+  // === 分数条 ===
+  let bars;
+  if(editable){
+    bars=REVIEW_DIMS.map(d=>{const v=sc[d.key]||0;return`<div class="score-bar-row"><div class="score-bar-label"><span class="sbl-name" title="${d.desc}">${d.label}</span><input type="number" class="score-edit-input" id="edit-score-${d.key}" value="${v}" min="0" max="10" step="0.5"></div><div class="score-bar-track"><div class="score-bar-fill" id="bar-${d.key}" style="width:${v*10}%;background:${scoreColor(v)}"></div></div></div>`;}).join('');
+  }else{
+    bars=REVIEW_DIMS.map(d=>{const v=sc[d.key]||0;return`<div class="score-bar-row"><div class="score-bar-label"><span class="sbl-name" title="${d.desc}">${d.label}</span><span class="sbl-val" style="color:${scoreColor(v)}">${v}</span></div><div class="score-bar-track"><div class="score-bar-fill" style="width:${v*10}%;background:${scoreColor(v)}"></div></div></div>`;}).join('');
+  }
+
+  // === 平均分 ===
+  const avgHtml=`<div class="review-avg-box"><div class="avg-label">平均分（及格线：${getConfig().pass_score}）</div><div class="avg-score" id="reviewAvgDisplay" style="color:${p?'var(--accent-green)':'var(--accent-red)'}">${avg}</div><div class="avg-status" id="reviewStatusDisplay" style="color:${p?'var(--accent-green)':'var(--accent-red)'}">${p?'&#10004; 审核通过':'&#10008; 未通过'}</div></div>`;
+
+  // === 综合评价 ===
+  let analysisHtml;
+  if(editable){
+    analysisHtml=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;font-weight:600">综合评价 <span style="font-weight:400;color:var(--accent-blue)">(可编辑)</span></div><textarea class="review-edit-textarea" id="editAnalysis">${review.analysis||''}</textarea>`;
+  }else{
+    analysisHtml=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;font-weight:600">综合评价</div><div class="review-detail-text">${review.analysis||'无'}</div>`;
+  }
+
+  // === 逐条建议列表 ===
+  let itemsHtml=`<div class="review-items-section"><div class="review-items-header"><span class="rih-title">修改建议 (${items.length}条)${editable?' <span style="font-weight:400;color:var(--accent-blue)">&mdash; 可编辑/删除/新增</span>':''}</span>${editable?'<button class="btn-add-item" onclick="_addReviewItem()">+ 新增建议</button>':''}</div><div id="reviewItemsList">`;
+  items.forEach((it,i)=>{itemsHtml+=_renderOneItem(it,i,editable);});
+  itemsHtml+=`</div></div>`;
+
+  // === 操作按钮 ===
+  let actionsHtml='';
+  if(showActions){
+    actionsHtml=`<div class="review-action-bar" id="reviewActionBar">
+      <button class="btn-rewrite" onclick="userDecisionRewrite()">&#128260; 发回修改</button>
+      <button class="btn-accept" onclick="userDecisionAccept()">&#10004; 接受并继续</button>
+      <button class="btn-skip-review" onclick="userDecisionForcePass()">&#9193; 跳过审核直接完成</button>
+    </div>`;
+    if(editable) actionsHtml+=`<div class="edit-mode-hint">可自由编辑分数和建议条目，Bot2将参考您的修改意见进行重写</div>`;
+  }
+
+  // 解析失败时显示原始回复帮助排查
+  let rawHtml='';
+  if(review._raw_preview && review.average===0 && review.retry_hint){
+    rawHtml=`<details style="margin-top:10px;border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--bg-card)">
+      <summary style="cursor:pointer;font-size:12px;color:var(--accent-red);font-weight:600">⚠ 解析失败 — 点击查看AI原始回复</summary>
+      <pre style="margin-top:6px;white-space:pre-wrap;word-break:break-all;font-size:11px;max-height:300px;overflow:auto;color:var(--text-muted)">${review._raw_preview.replace(/</g,'&lt;')}</pre>
+    </details>`;
+  }
+
+  $('reviewScorePanel').innerHTML=bars+avgHtml+analysisHtml+itemsHtml+rawHtml+actionsHtml;
+
+  // 绑定分数编辑的实时更新
+  if(editable){
+    REVIEW_DIMS.forEach(d=>{
+      const input=$('edit-score-'+d.key);
+      if(input) input.addEventListener('input',()=>_updateScoreBarsLive());
+    });
+  }
+}
+
+// 渲染单条建议
+function _renderOneItem(it, idx, editable){
+  const dimLabel=DIM_LABEL_MAP[it.dim]||it.dim||'其他';
+  const sevLabel=SEV_LABEL[it.severity]||it.severity||'medium';
+  const sevCls='sev-'+(it.severity||'medium');
+
+  if(editable){
+    return `<div class="review-item severity-${it.severity||'medium'}" data-idx="${idx}">
+      <button class="ri-delete" onclick="_deleteReviewItem(${idx})" title="删除此条">&#10005;</button>
+      <div class="ri-top">
+        <select class="ri-inline-select" data-field="severity" data-idx="${idx}" onchange="_onItemFieldChange(this)">
+          <option value="high"${it.severity==='high'?' selected':''}>必须改</option>
+          <option value="medium"${it.severity==='medium'?' selected':''}>建议改</option>
+          <option value="low"${it.severity==='low'?' selected':''}>可选改</option>
+        </select>
+        <select class="ri-inline-select" data-field="dim" data-idx="${idx}" onchange="_onItemFieldChange(this)">
+          ${REVIEW_DIMS.map(d=>`<option value="${d.key}"${it.dim===d.key?' selected':''}>${d.label}</option>`).join('')}
+        </select>
+        <input class="ri-edit-input" style="flex:1;min-height:auto" data-field="location" data-idx="${idx}" value="${_escHtml(it.location||'')}" placeholder="位置（如：第3段对话）">
+      </div>
+      <div class="ri-field"><div class="ri-field-label">问题</div><textarea class="ri-edit-input" data-field="problem" data-idx="${idx}" rows="2">${_escHtml(it.problem||'')}</textarea></div>
+      <div class="ri-field"><div class="ri-field-label">建议</div><textarea class="ri-edit-input" data-field="suggestion" data-idx="${idx}" rows="2">${_escHtml(it.suggestion||'')}</textarea></div>
+    </div>`;
+  }else{
+    return `<div class="review-item severity-${it.severity||'medium'}">
+      <div class="ri-top">
+        <span class="ri-badge ${sevCls}">${sevLabel}</span>
+        <span class="ri-badge dim-badge">${dimLabel}</span>
+        <span class="ri-location">${_escHtml(it.location||'')}</span>
+      </div>
+      <div class="ri-field"><div class="ri-field-label">问题</div><div class="ri-text">${_escHtml(it.problem||'')}</div></div>
+      <div class="ri-field"><div class="ri-field-label">建议</div><div class="ri-text">${_escHtml(it.suggestion||'')}</div></div>
+    </div>`;
+  }
+}
+
+function _escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// 删除一条建议
+function _deleteReviewItem(idx){
+  const list=$('reviewItemsList');
+  if(!list)return;
+  const items=list.querySelectorAll('.review-item');
+  if(items[idx]) items[idx].remove();
+  // 重新编号data-idx
+  list.querySelectorAll('.review-item').forEach((el,i)=>{
+    el.dataset.idx=i;
+    el.querySelector('.ri-delete').setAttribute('onclick',`_deleteReviewItem(${i})`);
+    el.querySelectorAll('[data-idx]').forEach(f=>f.dataset.idx=i);
+  });
+  // 更新条目数
+  const header=document.querySelector('.review-items-header .rih-title');
+  if(header){
+    const cnt=list.querySelectorAll('.review-item').length;
+    header.innerHTML=`修改建议 (${cnt}条) <span style="font-weight:400;color:var(--accent-blue)">&mdash; 可编辑/删除/新增</span>`;
+  }
+}
+
+// 新增一条空白建议
+function _addReviewItem(){
+  const list=$('reviewItemsList');
+  if(!list)return;
+  const idx=list.querySelectorAll('.review-item').length;
+  const newItem={dim:'literary',severity:'medium',location:'',problem:'',suggestion:''};
+  list.insertAdjacentHTML('beforeend',_renderOneItem(newItem,idx,true));
+  // 滚动到新增的条目
+  const last=list.lastElementChild;
+  if(last) last.scrollIntoView({behavior:'smooth',block:'nearest'});
+  // 更新条目数
+  const header=document.querySelector('.review-items-header .rih-title');
+  if(header){
+    header.innerHTML=`修改建议 (${idx+1}条) <span style="font-weight:400;color:var(--accent-blue)">&mdash; 可编辑/删除/新增</span>`;
+  }
+}
+
+// select变更时更新样式
+function _onItemFieldChange(el){
+  if(el.dataset.field==='severity'){
+    const item=el.closest('.review-item');
+    if(item){item.className='review-item severity-'+el.value;}
+  }
+}
+
+// 实时更新分数条和平均分
+function _updateScoreBarsLive(){
+  let sum=0,cnt=0;
+  const passScore=getConfig().pass_score||8;
+  REVIEW_DIMS.forEach(d=>{
+    const input=$('edit-score-'+d.key);
+    if(!input)return;
+    let v=parseFloat(input.value)||0;
+    v=Math.max(0,Math.min(10,v));
+    const bar=$('bar-'+d.key);
+    if(bar){bar.style.width=v*10+'%';bar.style.background=scoreColor(v);}
+    input.style.color=scoreColor(v);
+    sum+=v;cnt++;
+  });
+  const avg=cnt?Math.round(sum/cnt*10)/10:0;
+  const passed=avg>=passScore;
+  const avgEl=$('reviewAvgDisplay');
+  const statusEl=$('reviewStatusDisplay');
+  if(avgEl){avgEl.textContent=avg;avgEl.style.color=passed?'var(--accent-green)':'var(--accent-red)';}
+  if(statusEl){statusEl.textContent=passed?'✔ 审核通过':'✘ 未通过';statusEl.style.color=passed?'var(--accent-green)':'var(--accent-red)';}
+}
+
+// 从编辑面板读取用户修改后的审核结果（含逐条建议）
+function readEditedReview(){
+  const dimKeys=REVIEW_DIMS.map(d=>d.key);
+  const scores={};
+  let sum=0,cnt=0;
+  dimKeys.forEach(k=>{
+    const input=$('edit-score-'+k);
+    let v=input?parseFloat(input.value)||0:0;
+    v=Math.max(0,Math.min(10,v));
+    scores[k]=v;sum+=v;cnt++;
+  });
+  const average=cnt?Math.round(sum/cnt*10)/10:0;
+  const passScore=getConfig().pass_score||8;
+
+  // 读取逐条建议
+  const items=[];
+  const list=$('reviewItemsList');
+  if(list){
+    list.querySelectorAll('.review-item').forEach(el=>{
+      const get=(field)=>{
+        const f=el.querySelector(`[data-field="${field}"]`);
+        return f?(f.value||f.textContent||''):'';
+      };
+      items.push({
+        dim:get('dim'),
+        severity:get('severity'),
+        location:get('location'),
+        problem:get('problem'),
+        suggestion:get('suggestion'),
+      });
+    });
+  }
+
+  // 将items拼成suggestions文本传给Bot2
+  const suggestionsText=items.map((it,i)=>{
+    const dimLabel=DIM_LABEL_MAP[it.dim]||it.dim;
+    const sevLabel=SEV_LABEL[it.severity]||it.severity;
+    return `${i+1}. [${sevLabel}][${dimLabel}] 位置：${it.location}\n   问题：${it.problem}\n   建议：${it.suggestion}`;
+  }).join('\n\n');
+
+  return {
+    scores,
+    average,
+    passed:average>=passScore,
+    analysis:($('editAnalysis')?$('editAnalysis').value:''),
+    items,
+    suggestions:suggestionsText,
+  };
+}
+
+// ============================================================
+// Bot3 重新审计 + 自定义提示词系统
+// ============================================================
+
+let bot3CustomPrompts=[];   // [{id, name, content}]
+let activeBot3PromptId='';  // 当前选中的自定义提示词ID（空=使用默认）
+let bot3DefaultPrompt='';   // 从服务端加载的默认提示词
+
+// 获取当前生效的Bot3提示词（空字符串=使用默认）
+function getBot3CustomPrompt(){
+  if(!activeBot3PromptId) return '';
+  const p=bot3CustomPrompts.find(x=>x.id===activeBot3PromptId);
+  return p?p.content:'';
+}
+
+// 重新审计：手动触发一次Bot3审核
+async function manualReReview(){
+  const content=S.currentContent;
+  if(!content||!content.trim()){addLog('error','没有可审核的内容');return;}
+  if(!validateBot('bot3')){return;}
+  const config=getConfig();
+
+  $('btnReReview').disabled=true;
+  setStatus('busy','Bot3 重新审计中...');addLog('bot3','用户手动触发重新审计...');
+  $('reviewScorePanel').innerHTML='<div style="text-align:center;padding:30px;color:var(--text-muted)"><div class="spinner"></div><div style="margin-top:8px;font-size:12px">Bot3正在重新审核中...</div></div>';
+
+  let review;
+  try{
+    const r=await fetch('/api/bot3/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      content,outline:S.currentOutline,config,style_id:getStyleId(),custom_prompt:getBot3CustomPrompt()
+    })});
+    review=await r.json();
+    if(review.error&&!review.scores)throw new Error(review.error);
+  }catch(e){
+    addLog('error',`重新审计失败: ${e.message}`);setStatus('error','重新审计失败');
+    $('btnReReview').disabled=false;return;
+  }
+
+  addReviewToHistory(review,'手动');
+  // 不通过时可编辑+显示操作按钮（如果pipeline暂停中）
+  const isWaiting=!!_userDecisionResolve;
+  if(review.passed){
+    collectTipsFromReview(review);
+    renderReviewPanel(review,'手动',false,isWaiting);
+    addLog('bot3',`重新审计通过！平均分：${review.average}`);
+  }else{
+    renderReviewPanel(review,'手动',true,isWaiting);
+    addLog('bot3',`重新审计未通过(${review.average}分)`);
+  }
+  setStatus('ready','重新审计完成');$('btnReReview').disabled=false;_autoSave();
+}
+
+// ---- Bot3 提示词弹窗管理 ----
+async function loadBot3Prompts(){
+  try{
+    const r=await fetch('/api/bot3-prompts');const d=await r.json();
+    bot3CustomPrompts=d.prompts||[];
+    bot3DefaultPrompt=d.default_prompt||'';
+    _updateBot3PromptLabel();
+  }catch(e){console.warn('加载Bot3提示词失败',e);}
+}
+
+function _updateBot3PromptLabel(){
+  const el=$('bot3PromptLabel');
+  if(!el) return;
+  if(activeBot3PromptId){
+    const p=bot3CustomPrompts.find(x=>x.id===activeBot3PromptId);
+    el.textContent=p?`当前：${p.name}`:'';
+  }else{
+    el.textContent='';
+  }
+}
+
+function openBot3PromptModal(){
+  $('bot3PromptOverlay').classList.add('show');
+  _renderBot3PromptList();
+  // 默认：新建模式，加载系统默认提示词
+  $('b3pEditId').value='';
+  $('b3pName').value='';
+  $('b3pContent').value=bot3DefaultPrompt;
+  $('b3pDeleteBtn').style.display='none';
+}
+
+function closeBot3PromptModal(){
+  $('bot3PromptOverlay').classList.remove('show');
+}
+
+function _renderBot3PromptList(){
+  const el=$('bot3PromptList');
+  if(!bot3CustomPrompts.length){
+    el.innerHTML='<div style="padding:8px 10px;font-size:11px;color:var(--text-muted);">尚无自定义提示词，点击"新建"创建</div>';
+    return;
+  }
+  el.innerHTML=bot3CustomPrompts.map(p=>{
+    const isActive=p.id===activeBot3PromptId;
+    return `<div class="b3p-item${isActive?' active':''}" onclick="_editBot3Prompt('${p.id}')">
+      <span class="b3p-name">${_escHtml(p.name)}</span>
+      <button class="b3p-use${isActive?' active-use':''}" onclick="event.stopPropagation();_toggleBot3Prompt('${p.id}')">${isActive?'使用中':'启用'}</button>
+    </div>`;
+  }).join('');
+}
+
+function _editBot3Prompt(id){
+  const p=bot3CustomPrompts.find(x=>x.id===id);
+  if(!p) return;
+  $('b3pEditId').value=p.id;
+  $('b3pName').value=p.name;
+  $('b3pContent').value=p.content;
+  $('b3pDeleteBtn').style.display='';
+}
+
+function _toggleBot3Prompt(id){
+  if(activeBot3PromptId===id){
+    activeBot3PromptId='';
+    localStorage.removeItem('nf_bot3_prompt_id');
+    addLog('system','已切换回默认审核提示词');
+  }else{
+    activeBot3PromptId=id;
+    localStorage.setItem('nf_bot3_prompt_id',id);
+    const p=bot3CustomPrompts.find(x=>x.id===id);
+    addLog('system',`已启用自定义提示词「${p?p.name:id}」`);
+  }
+  _renderBot3PromptList();
+  _updateBot3PromptLabel();
+}
+
+function newBot3Prompt(){
+  $('b3pEditId').value='';
+  $('b3pName').value='';
+  $('b3pContent').value=bot3DefaultPrompt;
+  $('b3pDeleteBtn').style.display='none';
+}
+
+async function saveBot3Prompt(){
+  const name=$('b3pName').value.trim();
+  const content=$('b3pContent').value.trim();
+  if(!name){alert('请输入提示词名称');return;}
+  if(!content){alert('提示词内容不能为空');return;}
+
+  const editId=$('b3pEditId').value;
+  if(editId){
+    // 编辑已有
+    const p=bot3CustomPrompts.find(x=>x.id===editId);
+    if(p){p.name=name;p.content=content;}
+  }else{
+    // 新建
+    bot3CustomPrompts.push({id:'b3p_'+Date.now().toString(36),name,content});
+  }
+  await _pushBot3Prompts();
+  _renderBot3PromptList();
+  addLog('system',`Bot3提示词「${name}」已保存`);
+}
+
+async function deleteBot3Prompt(){
+  const editId=$('b3pEditId').value;
+  if(!editId) return;
+  const p=bot3CustomPrompts.find(x=>x.id===editId);
+  if(!confirm(`确定删除「${p?p.name:''}」？`)) return;
+  bot3CustomPrompts=bot3CustomPrompts.filter(x=>x.id!==editId);
+  if(activeBot3PromptId===editId){activeBot3PromptId='';localStorage.removeItem('nf_bot3_prompt_id');}
+  await _pushBot3Prompts();
+  _renderBot3PromptList();
+  _updateBot3PromptLabel();
+  newBot3Prompt();
+  addLog('system','已删除自定义提示词');
+}
+
+async function _pushBot3Prompts(){
+  try{
+    await fetch('/api/bot3-prompts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompts:bot3CustomPrompts})});
+  }catch(e){console.warn('保存Bot3提示词失败',e);}
+}
+
+function addReviewToHistory(review,attempt){
+  S.reviews.push({review,attempt,time:now()});
+  const el=$('rhistoryPanel'),item=document.createElement('div');
+  item.className='review-history-item';const p=review.passed;
+  item.innerHTML=`<span>${'第'+attempt+'次审核 ['+now()+']'}</span><span class="badge ${p?'badge-pass':'badge-fail'}">${p?'通过':'未通过'} ${review.average||0}分</span>`;
+  item.onclick=()=>{renderReviewPanel(review,attempt);switchTab('review');};
+  el.prepend(item);
+}
+
+// ============================================================
+// 确认大纲 → 流水线（失败不自动重试，弹红条让用户点）
+// ============================================================
+async function confirmOutline(){
+  if(!S.currentOutline){alert('还没有大纲内容');return;}
+  if(!validateAll())return;
+  hideAllErrors();
+  await runPipeline(1, '', getConfig(), buildBot1Context());
+}
+
+// 用户决策的Promise解析器（供runPipeline内await）
+let _userDecisionResolve=null;
+
+function userDecisionRewrite(){
+  // 读取用户可能编辑过的审核结果
+  const edited=readEditedReview();
+  S._lastSuggestions=edited.suggestions;
+  // 更新审核历史中最新一条
+  if(S.reviews.length>0){
+    const last=S.reviews[S.reviews.length-1];
+    last.review={...last.review,...edited};
+  }
+  addLog('system','用户选择发回修改');
+  if(_userDecisionResolve) _userDecisionResolve('rewrite');
+}
+function userDecisionAccept(){
+  addLog('system','用户接受当前版本，继续Bot4总结');
+  if(_userDecisionResolve) _userDecisionResolve('accept');
+}
+function userDecisionForcePass(){
+  addLog('system','用户跳过审核，直接完成本章');
+  if(_userDecisionResolve) _userDecisionResolve('force_pass');
+}
+
+// 等待用户在审核面板中做出决策
+function waitForUserDecision(){
+  return new Promise(resolve=>{_userDecisionResolve=resolve;});
+}
+
+async function runPipeline(startAttempt, prevContent, config, context){
+  $('btnConfirmOutline').disabled=true;$('btnNewChat').disabled=true;$('btnSend').disabled=true;
+  S.abortCtrl=new AbortController();S.isGenerating=true;
+  $('pipelineBar').classList.add('show');$('btnStop').style.display='';
+  setStep('ps-bot1','done');hideAllErrors();
+
+  let currentContent=prevContent;
+  let attempt=startAttempt;
+
+  // Bot2→Bot3循环
+  while(attempt<=config.max_retries+1){
+    // === Bot2 ===
+    setStep('ps-bot2','active');setStatus('busy',`Bot2创作中 (第${attempt}次)...`);
+    addLog('bot2',`开始创作 (第${attempt}次)...`);switchTab('content');
+    const contentEl=$('contentOutput');contentEl.className='output-area';contentEl.textContent='';
+
+    try{
+      const url=attempt===1?'/api/bot2/write':'/api/bot2/rewrite';
+      const _sid=getStyleId(),_wc=getWordCount(),_tips=getTipsText(),_pe=getPrevEnding();
+      // 优化：初次仅大纲+风格，不发上下文；重写发大纲+原文+建议，不发上下文
+      const body=attempt===1
+        ?{outline:S.currentOutline,config,style_id:_sid,word_count:_wc,tips:_tips,prev_ending:_pe}
+        :{outline:S.currentOutline,content:currentContent,suggestions:S._lastSuggestions||'',config,style_id:_sid,word_count:_wc,tips:_tips,prev_ending:_pe};
+      currentContent=await readSSE(url,body,(chunk,full)=>{contentEl.textContent=full;contentEl.scrollTop=99999;$('wordCount').textContent=`字数：${full.length}`;},S.abortCtrl.signal);
+      if(!currentContent||!currentContent.trim())throw new Error('Bot2返回空内容');
+      S.currentContent=currentContent;setStep('ps-bot2','done');addLog('bot2',`创作完成，共${currentContent.length}字`);_autoSave();
+    }catch(e){
+      if(e.name==='AbortError'){addLog('system','已停止');resetPipeline();return;}
+      setStep('ps-bot2','fail');setStatus('error','Bot2出错');addLog('error',`Bot2错误: ${e.message}`);
+      switchTab('content');
+      S.pipelineState={stage:'bot2',attempt,currentContent,config,context};
+      showError('errContent',`Bot2创作失败: ${e.message}`,()=>retryFromState());
+      resetPipelineButtons();return;
+    }
+
+    // === Bot3 ===
+    setStep('ps-bot3','active');setStatus('busy',`Bot3审核中 (第${attempt}次)...`);
+    addLog('bot3',`开始审核 (第${attempt}次)...`);switchTab('review');
+    $('reviewScorePanel').innerHTML='<div style="text-align:center;padding:30px;color:var(--text-muted)"><div class="spinner"></div><div style="margin-top:8px;font-size:12px">Bot3正在审核中...</div></div>';
+
+    let review;
+    try{
+      const r=await fetch('/api/bot3/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:currentContent,outline:S.currentOutline,config,style_id:getStyleId(),custom_prompt:getBot3CustomPrompt()}),signal:S.abortCtrl.signal});
+      review=await r.json();
+      if(review.error&&!review.scores)throw new Error(review.error);
+    }catch(e){
+      if(e.name==='AbortError'){addLog('system','已停止');resetPipeline();return;}
+      setStep('ps-bot3','fail');setStatus('error','Bot3出错');addLog('error',`Bot3错误: ${e.message}`);
+      switchTab('review');
+      S.pipelineState={stage:'bot3',attempt,currentContent,config,context};
+      showError('errReview',`Bot3审核失败: ${e.message}`,()=>retryFromState());
+      resetPipelineButtons();return;
+    }
+
+    addReviewToHistory(review,attempt);
+
+    if(review.passed){
+      // 审核通过 → 收集low建议到错题本 → 只读展示，直接继续
+      collectTipsFromReview(review);
+      renderReviewPanel(review,attempt,false,false);
+      setStep('ps-bot3','done');addLog('bot3',`审核通过！平均分：${review.average}`);_autoSave();break;
+    }else{
+      // 审核未通过 → 可编辑模式 + 显示用户决策按钮
+      setStep('ps-bot3','fail');addLog('bot3',`未通过(${review.average}分)，等待用户决策...`);_autoSave();
+      $('retryInfo').textContent=`第${attempt}次未通过`;
+
+      if(attempt>config.max_retries){
+        addLog('bot3','已达最大重写次数');
+        // 仍然显示决策面板，让用户选择接受或编辑
+        renderReviewPanel(review,attempt,true,true);
+        setStatus('ready',`已达最大重写次数(${config.max_retries})，请决定下一步`);
+      }else{
+        renderReviewPanel(review,attempt,true,true);
+        setStatus('ready',`审核未通过(${review.average}分) - 可编辑分数/建议，然后决定下一步`);
+      }
+
+      // 暂停Pipeline，保存状态，等待用户交互
+      S.pipelineState={stage:'bot3_decision',attempt,currentContent,config,context};
+      resetPipelineButtons();
+
+      // 等待用户点击按钮
+      const decision=await waitForUserDecision();
+      _userDecisionResolve=null;
+
+      if(decision==='accept'){
+        // 用户接受当前版本 → 继续Bot4
+        setStep('ps-bot3','done');break;
+      }else if(decision==='force_pass'){
+        // 跳过Bot4直接完成
+        const idx=S.chapters.length+1;
+        S.chapters.push({outline:S.currentOutline,content:S.currentContent,summary:S.currentSummary||'（用户跳过总结）'});
+        updateChapterList();$('chapterInfo').textContent=`第${idx}章已完成`;$('retryInfo').textContent='';
+        S.pipelineState=null;
+        setStatus('ready','创作完成（跳过总结）');addLog('system',`第${idx}章创作完成（跳过审核和总结）`);resetPipeline();_autoSaveAfterChapter();
+        return; // 跳过Bot4
+      }else{
+        // rewrite → 继续循环
+        S._lastSuggestions=readEditedReview().suggestions;
+        setStep('ps-bot2','');attempt++;
+        // 重新进入generating状态
+        $('btnConfirmOutline').disabled=true;$('btnNewChat').disabled=true;$('btnSend').disabled=true;
+        S.abortCtrl=new AbortController();S.isGenerating=true;
+        $('pipelineBar').classList.add('show');$('btnStop').style.display='';
+        hideAllErrors();
+        continue;
+      }
+    }
+  }
+
+  // === Bot4 ===
+  // 恢复generating状态（可能在用户决策后被重置了）
+  $('btnConfirmOutline').disabled=true;$('btnNewChat').disabled=true;$('btnSend').disabled=true;
+  S.abortCtrl=new AbortController();S.isGenerating=true;
+  $('pipelineBar').classList.add('show');$('btnStop').style.display='';
+  await _runBot4(currentContent, config, context, attempt);
+}
+
+// 共用Bot4逻辑
+async function _runBot4(content, config, context, attempt){
+  setStep('ps-bot4','active');setStatus('busy','Bot4生成记忆总结...');addLog('bot4','开始总结...');switchTab('summary');
+  const sumEl=$('summaryOutput');sumEl.className='output-area';sumEl.textContent='';
+
+  try{
+    // 改进2: 传入大纲辅助伏笔追踪
+    const summary=await readSSE('/api/bot4/summarize',{content,config,previous_summary:S.currentSummary,outline:S.currentOutline},(chunk,full)=>{sumEl.textContent=full;sumEl.scrollTop=99999;},S.abortCtrl.signal);
+    if(!summary||!summary.trim())throw new Error('Bot4返回空内容');
+    S.currentSummary=summary;setStep('ps-bot4','done');addLog('bot4','记忆总结完成');
+    // 改进6: 章节完成后检查是否需要压缩记忆
+    await maybeCompressSummary(config);
+  }catch(e){
+    if(e.name==='AbortError'){addLog('system','已停止');resetPipeline();return;}
+    setStep('ps-bot4','fail');setStatus('error','Bot4出错');addLog('error',`Bot4错误: ${e.message}`);
+    switchTab('summary');
+    S.pipelineState={stage:'bot4',attempt,currentContent:content,config,context};
+    showError('errSummary',`Bot4总结失败: ${e.message}`,()=>retryFromState());
+    resetPipelineButtons();return;
+  }
+
+  // 完成
+  const idx=S.chapters.length+1;
+  S.chapters.push({outline:S.currentOutline,content:S.currentContent,summary:S.currentSummary});
+  updateChapterList();$('chapterInfo').textContent=`第${idx}章已完成`;$('retryInfo').textContent='';
+  S.pipelineState=null;
+  setStatus('ready','创作完成');addLog('system',`第${idx}章创作完成！`);resetPipeline();_autoSaveAfterChapter();
+}
+
+// 从保存的状态重试当前步骤
+async function retryFromState(){
+  if(!S.pipelineState)return;
+  const ps=S.pipelineState;
+  addLog('system',`用户点击重试 ${ps.stage}...`);
+
+  if(ps.stage==='bot2'){
+    await runPipeline(ps.attempt, ps.currentContent, ps.config, ps.context);
+  }else if(ps.stage==='bot3'){
+    // 直接重试Bot3，然后继续后续
+    await retryBot3AndContinue(ps);
+  }else if(ps.stage==='bot4'){
+    await retryBot4(ps);
+  }
+}
+
+async function retryBot3AndContinue(ps){
+  $('btnConfirmOutline').disabled=true;$('btnNewChat').disabled=true;$('btnSend').disabled=true;
+  S.abortCtrl=new AbortController();S.isGenerating=true;
+  $('pipelineBar').classList.add('show');$('btnStop').style.display='';
+  hideAllErrors();setStep('ps-bot3','active');setStatus('busy',`Bot3重试审核中...`);
+  addLog('bot3','重试审核...');switchTab('review');
+  $('reviewScorePanel').innerHTML='<div style="text-align:center;padding:30px;color:var(--text-muted)"><div class="spinner"></div><div style="margin-top:8px;font-size:12px">Bot3正在审核中...</div></div>';
+
+  let review;
+  try{
+    const r=await fetch('/api/bot3/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:ps.currentContent,outline:S.currentOutline,config:ps.config,style_id:getStyleId(),custom_prompt:getBot3CustomPrompt()}),signal:S.abortCtrl.signal});
+    review=await r.json();if(review.error&&!review.scores)throw new Error(review.error);
+  }catch(e){
+    if(e.name==='AbortError'){addLog('system','已停止');resetPipeline();return;}
+    setStep('ps-bot3','fail');setStatus('error','Bot3出错');addLog('error',`Bot3错误: ${e.message}`);
+    showError('errReview',`Bot3审核失败: ${e.message}`,()=>retryFromState());
+    resetPipelineButtons();return;
+  }
+
+  addReviewToHistory(review,ps.attempt);
+
+  if(review.passed){
+    collectTipsFromReview(review);
+    renderReviewPanel(review,ps.attempt,false,false);
+    setStep('ps-bot3','done');addLog('bot3',`审核通过！平均分：${review.average}`);
+    // 继续Bot4
+    await _runBot4(ps.currentContent, ps.config, ps.context, ps.attempt);
+  }else{
+    // 未通过 → 可编辑模式 + 等待用户决策
+    setStep('ps-bot3','fail');addLog('bot3',`未通过(${review.average}分)，等待用户决策...`);
+    renderReviewPanel(review,ps.attempt,true,true);
+    setStatus('ready',`审核未通过(${review.average}分) - 可编辑分数/建议，然后决定下一步`);
+    S.pipelineState={stage:'bot3_decision',attempt:ps.attempt,currentContent:ps.currentContent,config:ps.config,context:ps.context};
+    resetPipelineButtons();
+
+    const decision=await waitForUserDecision();
+    _userDecisionResolve=null;
+
+    if(decision==='accept'){
+      await _runBot4(ps.currentContent, ps.config, ps.context, ps.attempt);
+    }else if(decision==='force_pass'){
+      const idx=S.chapters.length+1;
+      S.chapters.push({outline:S.currentOutline,content:S.currentContent,summary:S.currentSummary||'（用户跳过总结）'});
+      updateChapterList();$('chapterInfo').textContent=`第${idx}章已完成`;S.pipelineState=null;
+      setStatus('ready','创作完成（跳过总结）');addLog('system',`第${idx}章创作完成`);resetPipeline();_autoSaveAfterChapter();
+    }else{
+      S._lastSuggestions=readEditedReview().suggestions;
+      await runPipeline(ps.attempt+1, ps.currentContent, ps.config, ps.context);
+    }
+  }
+}
+
+async function retryBot4(ps){
+  $('btnConfirmOutline').disabled=true;$('btnNewChat').disabled=true;$('btnSend').disabled=true;
+  S.abortCtrl=new AbortController();S.isGenerating=true;
+  $('pipelineBar').classList.add('show');$('btnStop').style.display='';
+  hideAllErrors();addLog('bot4','重试总结...');
+  await _runBot4(ps.currentContent, ps.config, ps.context, ps.attempt);
+}
+
+// 章节
+function updateChapterList(){const el=$('chapterList');el.innerHTML='';S.chapters.forEach((ch,i)=>{const d=document.createElement('div');d.className='chapter-item';d.textContent=`${i+1}. 第${i+1}章 (${ch.content.length}字)`;d.onclick=()=>viewChapter(i);el.appendChild(d);});}
+function viewChapter(i){const ch=S.chapters[i];$('outlinePreview').textContent=ch.outline;$('outlinePreview').className='outline-body';$('contentOutput').textContent=ch.content;$('contentOutput').className='output-area';$('summaryOutput').textContent=ch.summary;$('summaryOutput').className='output-area';switchTab('content');$('chapterInfo').textContent=`查看：第${i+1}章`;}
+
+// 停止/重置
+function stopAll(){if(S.abortCtrl)S.abortCtrl.abort();S.isGenerating=false;setStatus('ready','已停止');addLog('system','用户手动停止');resetPipeline();}
+function resetPipeline(){S.isGenerating=false;$('btnSend').disabled=false;$('btnConfirmOutline').disabled=!S.currentOutline;$('btnNewChat').disabled=false;$('btnStop').style.display='none';}
+function resetPipelineButtons(){S.isGenerating=false;$('btnSend').disabled=false;$('btnNewChat').disabled=false;$('btnStop').style.display='none';}
+
+// ============================================================
+// 配置方案 - 服务端持久化（API密钥/地址/模型）
+// ============================================================
+let allConfigProfiles = []; // [{id,name,bot1:{base_url,api_key,model},...}]
+let activeConfigId = null;
+
+function readCurrentBotFields(){
+  const r={};
+  ['bot1','bot2','bot3','bot4'].forEach(b=>{
+    r[b]={base_url:$(b+'_url').value, api_key:$(b+'_key').value, model:$(b+'_model').value, models_html:$(b+'_model').innerHTML};
+  });
+  r.pass_score=parseFloat($('passScore').value)||8;
+  r.max_retries=parseInt($('maxRetries').value)||3;
+  r.style_id=getStyleId();
+  r.word_count=getWordCount();
+  return r;
+}
+
+function applyConfigToFields(cfg){
+  ['bot1','bot2','bot3','bot4'].forEach(b=>{
+    if(cfg[b]){
+      if(cfg[b].base_url) $(b+'_url').value=cfg[b].base_url;
+      if(cfg[b].api_key) $(b+'_key').value=cfg[b].api_key;
+      if(cfg[b].models_html) $(b+'_model').innerHTML=cfg[b].models_html;
+      if(cfg[b].model) $(b+'_model').value=cfg[b].model;
+    }
+  });
+  if(cfg.pass_score) $('passScore').value=cfg.pass_score;
+  if(cfg.max_retries) $('maxRetries').value=cfg.max_retries;
+  if(cfg.style_id) selectStyle(cfg.style_id, true);
+  if(cfg.word_count) $('wordCountInput').value=cfg.word_count;
+}
+
+async function saveConfigProfile(){
+  const name=$('configProfileName').value.trim()||'未命名';
+  const fields=readCurrentBotFields();
+  if(!activeConfigId) activeConfigId='cfg_'+Date.now().toString(36);
+  // 更新或新增
+  let found=false;
+  for(let i=0;i<allConfigProfiles.length;i++){
+    if(allConfigProfiles[i].id===activeConfigId){allConfigProfiles[i]={id:activeConfigId,name,...fields};found=true;break;}
+  }
+  if(!found) allConfigProfiles.push({id:activeConfigId,name,...fields});
+  await pushConfigsToServer();
+  renderConfigProfiles();
+  addLog('system',`配置方案「${name}」已保存到服务器`);
+}
+
+// 获取模型成功后自动保存当前配置
+async function autoSaveConfigAfterModelFetch(){
+  if(!activeConfigId){
+    // 第一次获取模型，自动创建默认配置
+    activeConfigId='cfg_'+Date.now().toString(36);
+    $('configProfileName').value=$('configProfileName').value||'默认配置';
+  }
+  await saveConfigProfile();
+}
+
+async function pushConfigsToServer(){
+  try{
+    await fetch('/api/configs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({configs:allConfigProfiles})});
+  }catch(e){console.warn('保存配置失败',e);}
+}
+
+async function loadConfigsFromServer(){
+  try{
+    const r=await fetch('/api/configs');const d=await r.json();
+    allConfigProfiles=d.configs||[];
+    renderConfigProfiles();
+    // 自动加载第一个（或上次使用的）
+    const lastId=localStorage.getItem('nf_active_cfg');
+    const target=allConfigProfiles.find(c=>c.id===lastId)||allConfigProfiles[0];
+    if(target){
+      activeConfigId=target.id;
+      $('configProfileName').value=target.name||'';
+      applyConfigToFields(target);
+      addLog('system',`已自动加载配置「${target.name}」`);
+    }
+  }catch{}
+}
+
+function renderConfigProfiles(){
+  const el=$('configProfileList');el.innerHTML='';
+  // 更新菜单按钮标签
+  const activeCfg=allConfigProfiles.find(c=>c.id===activeConfigId);
+  $('configMenuLabel').textContent=activeCfg?activeCfg.name:'';
+
+  if(!allConfigProfiles.length){el.innerHTML='<div style="font-size:11px;color:var(--text-muted)">无已保存方案</div>';return;}
+  allConfigProfiles.forEach(c=>{
+    const row=document.createElement('div');
+    row.className='dd-list-item'+(c.id===activeConfigId?' active':'');
+    row.innerHTML=`<span class="dli-name">${c.id===activeConfigId?'&#9679; ':''}${c.name}</span><button class="dli-btn" title="加载">加载</button><button class="dli-btn del" title="删除">删除</button>`;
+    row.querySelector('.dli-btn:first-of-type').onclick=(e)=>{
+      e.stopPropagation();
+      activeConfigId=c.id;$('configProfileName').value=c.name||'';
+      applyConfigToFields(c);localStorage.setItem('nf_active_cfg',c.id);
+      renderConfigProfiles();addLog('system',`已切换到配置「${c.name}」`);
+    };
+    row.querySelector('.dli-btn.del').onclick=async(e)=>{
+      e.stopPropagation();
+      if(!confirm(`删除配置方案「${c.name}」？`))return;
+      allConfigProfiles=allConfigProfiles.filter(x=>x.id!==c.id);
+      if(activeConfigId===c.id)activeConfigId=null;
+      await pushConfigsToServer();renderConfigProfiles();addLog('system',`已删除配置「${c.name}」`);
+    };
+    el.appendChild(row);
+  });
+}
+
+$('chatInput').addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,140)+'px';});
+
+// ============================================================
+// 项目持久化
+// ============================================================
+let currentProjectId = null;
+function genProjectId(){return 'proj_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6);}
+
+function _getActiveTab(){
+  const active=document.querySelector('.tab.active');
+  return active?active.id.replace('tab-',''):'bot1';
+}
+
+async function saveProject(silent){
+  const name=$('projectName').value.trim()||'未命名项目';
+  if(!currentProjectId) currentProjectId=genProjectId();
+  // 清理pipelineState中的不可序列化字段（AbortController等），只保留可持久化数据
+  let savablePipelineState=null;
+  if(S.pipelineState){
+    savablePipelineState={
+      stage:S.pipelineState.stage,
+      attempt:S.pipelineState.attempt,
+      currentContent:S.pipelineState.currentContent||'',
+      context:S.pipelineState.context||'',
+      // config里的数据会很大且含敏感信息，不重复保存——恢复时从当前配置取
+    };
+  }
+  const body={
+    project_id:currentProjectId, name,
+    chapters:S.chapters,
+    chat_history:S.chatHistory,
+    current_outline:S.currentOutline,
+    current_summary:S.currentSummary,
+    current_content:S.currentContent,
+    reviews:S.reviews,
+    logs:S.logs,
+    pipeline_state:savablePipelineState,
+    active_tab:_getActiveTab(),
+    accumulated_tips:S.accumulatedTips||[],
+  };
+  try{const r=await fetch('/api/projects/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(d.ok){localStorage.setItem('nf_last_project',currentProjectId);if(!silent){addLog('system',`项目「${name}」已保存`);}loadProjectList();}else{if(!silent)addLog('error','保存失败');}}
+  catch(e){if(!silent)addLog('error',`保存失败: ${e.message}`);}
+}
+
+// 同步保存（用于beforeunload，使用sendBeacon确保页面关闭时数据不丢失）
+function saveProjectSync(){
+  const name=$('projectName').value.trim()||'未命名项目';
+  if(!currentProjectId&&S.chatHistory.length===0&&S.chapters.length===0) return;
+  if(!currentProjectId) currentProjectId=genProjectId();
+  let savablePipelineState=null;
+  if(S.pipelineState){
+    savablePipelineState={stage:S.pipelineState.stage,attempt:S.pipelineState.attempt,currentContent:S.pipelineState.currentContent||'',context:S.pipelineState.context||''};
+  }
+  const body={
+    project_id:currentProjectId, name,
+    chapters:S.chapters,
+    chat_history:S.chatHistory,
+    current_outline:S.currentOutline,
+    current_summary:S.currentSummary,
+    current_content:S.currentContent,
+    reviews:S.reviews,
+    logs:S.logs,
+    pipeline_state:savablePipelineState,
+    active_tab:_getActiveTab(),
+    accumulated_tips:S.accumulatedTips||[],
+  };
+  navigator.sendBeacon('/api/projects/save', new Blob([JSON.stringify(body)],{type:'application/json'}));
+  localStorage.setItem('nf_last_project',currentProjectId);
+}
+
+// 页面关闭/刷新时自动保存
+window.addEventListener('beforeunload',()=>{
+  saveProjectSync();
+});
+
+// 定期自动保存（每60秒，静默保存）
+setInterval(()=>{
+  if(currentProjectId||S.chatHistory.length>0||S.chapters.length>0){
+    saveProject(true);
+  }
+},60000);
+
+async function loadProjectList(){
+  try{const r=await fetch('/api/projects');const d=await r.json();const el=$('projectList');el.innerHTML='';
+    // 更新菜单按钮标签
+    $('projectMenuLabel').textContent=currentProjectId?($('projectName').value||''):'';
+
+    if(!d.projects||!d.projects.length){el.innerHTML='<div style="font-size:11px;color:var(--text-muted)">无已保存项目</div>';return;}
+    d.projects.forEach(p=>{
+      const row=document.createElement('div');
+      row.className='dd-list-item'+(p.id===currentProjectId?' active':'');
+      row.innerHTML=`<span class="dli-name">${p.id===currentProjectId?'&#9679; ':''}${p.name}</span><span class="dli-meta">${p.chapters}章</span><button class="dli-btn" title="加载">加载</button><button class="dli-btn del" title="删除">删除</button>`;
+      row.querySelector('.dli-btn:first-of-type').onclick=(e)=>{e.stopPropagation();loadProject(p.id);};
+      row.querySelector('.dli-btn.del').onclick=(e)=>{e.stopPropagation();deleteProject(p.id,p.name);};
+      el.appendChild(row);
+    });
+  }catch{}
+}
+
+async function loadProject(pid){
+  try{const r=await fetch(`/api/projects/${pid}`);if(!r.ok)throw new Error('加载失败');const d=await r.json();
+    currentProjectId=d.project_id;
+    $('projectName').value=d.name||'';
+    S.chatHistory=d.chat_history||[];
+    S.chapters=d.chapters||[];
+    S.currentOutline=d.current_outline||'';
+    S.currentSummary=d.current_summary||'';
+    S.currentContent=d.current_content||'';
+    S.reviews=d.reviews||[];
+    S.logs=d.logs||[];
+    S.accumulatedTips=d.accumulated_tips||[];
+
+    // 恢复聊天UI
+    rebuildChatUI();
+    recalcOutlineFromHistory();
+    updateChapterList();
+
+    // 恢复正文
+    if(S.currentContent){$('contentOutput').textContent=S.currentContent;$('contentOutput').className='output-area';$('wordCount').textContent=`字数：${S.currentContent.length}`;}
+    // 恢复记忆
+    if(S.currentSummary){$('summaryOutput').textContent=S.currentSummary;$('summaryOutput').className='output-area';}
+    // 恢复日志
+    rebuildLogUI();
+    // 恢复审核历史
+    rebuildReviewHistoryUI();
+
+    localStorage.setItem('nf_last_project',currentProjectId);
+    addLog('system',`已加载项目「${d.name}」(${S.chapters.length}章)`);
+
+    // 恢复上次激活的Tab页
+    const savedTab=d.active_tab||'bot1';
+    switchTab(savedTab);
+
+    // 检测并恢复中断的Pipeline
+    if(d.pipeline_state&&d.pipeline_state.stage){
+      const ps=d.pipeline_state;
+      const stageNames={bot2:'Bot2创作',bot3:'Bot3审核',bot4:'Bot4总结'};
+      const stageName=stageNames[ps.stage]||ps.stage;
+      addLog('system',`检测到上次中断的流水线：${stageName}（第${ps.attempt}次）`);
+      showPipelineResumePrompt(ps, stageName);
+    }
+  }catch(e){addLog('error',`加载项目失败: ${e.message}`);}
+}
+
+// 显示Pipeline恢复提示
+function showPipelineResumePrompt(ps, stageName){
+  // 创建恢复提示横幅
+  let banner=$('pipelineResumeBanner');
+  if(!banner){
+    banner=document.createElement('div');
+    banner.id='pipelineResumeBanner';
+    banner.style.cssText='position:fixed;top:50px;left:50%;transform:translateX(-50%);z-index:9999;background:var(--bg-surface);border:1px solid var(--accent-yellow);border-radius:10px;padding:16px 24px;display:flex;align-items:center;gap:16px;box-shadow:0 8px 32px rgba(0,0,0,0.4);max-width:520px;';
+    document.body.appendChild(banner);
+  }
+  banner.innerHTML=`
+    <div style="flex:1;">
+      <div style="font-size:14px;font-weight:600;color:var(--accent-yellow);margin-bottom:4px;">⚠ 检测到未完成的创作流程</div>
+      <div style="font-size:12px;color:var(--text-secondary);">上次在「${stageName}」阶段（第${ps.attempt}次尝试）中断。是否从断点继续？</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-shrink:0;">
+      <button id="btnResumeYes" style="padding:6px 16px;background:var(--accent-green);color:#1e1e2e;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">继续创作</button>
+      <button id="btnResumeNo" style="padding:6px 16px;background:var(--bg-tertiary);color:var(--text-secondary);border:1px solid var(--border);border-radius:6px;font-size:12px;cursor:pointer;">放弃</button>
+    </div>`;
+  $('btnResumeYes').onclick=()=>{
+    banner.remove();
+    resumePipelineFromSaved(ps);
+  };
+  $('btnResumeNo').onclick=()=>{
+    banner.remove();
+    S.pipelineState=null;
+    addLog('system','已放弃恢复中断的流水线');
+    saveProject(true);
+  };
+}
+
+// 从保存的Pipeline状态恢复执行
+async function resumePipelineFromSaved(ps){
+  if(!validateAll()){addLog('error','请先完成Bot配置后再恢复');return;}
+  const config=getConfig();
+  // 用当前配置替换（因为保存时没有存config）
+  const fullState={stage:ps.stage, attempt:ps.attempt, currentContent:ps.currentContent||S.currentContent||'', config, context:ps.context||S.currentSummary||''};
+  S.pipelineState=fullState;
+  addLog('system',`从「${ps.stage}」阶段恢复创作...`);
+
+  if(ps.stage==='bot2'){
+    await runPipeline(ps.attempt, fullState.currentContent, config, fullState.context);
+  }else if(ps.stage==='bot3'){
+    await retryBot3AndContinue(fullState);
+  }else if(ps.stage==='bot4'){
+    await retryBot4(fullState);
+  }
+}
+
+function rebuildLogUI(){
+  $('logPanel').innerHTML='';
+  S.logs.forEach(l=>{
+    const e=document.createElement('div');e.className=`log-entry ${l.bot}`;
+    e.innerHTML=`<span class="lt">[${l.time}]</span><span class="lb">[${l.bot.toUpperCase()}]</span><span>${l.msg}</span>`;
+    $('logPanel').appendChild(e);
+  });
+  $('logPanel').scrollTop=99999;
+}
+
+function rebuildReviewHistoryUI(){
+  $('rhistoryPanel').innerHTML='';
+  S.reviews.forEach(r=>{
+    const item=document.createElement('div');item.className='review-history-item';
+    const p=r.review&&r.review.passed;
+    item.innerHTML=`<span>第${r.attempt}次审核 [${r.time}]</span><span class="badge ${p?'badge-pass':'badge-fail'}">${p?'通过':'未通过'} ${(r.review&&r.review.average)||0}分</span>`;
+    item.onclick=()=>{renderReviewPanel(r.review,r.attempt);switchTab('review');};
+    $('rhistoryPanel').prepend(item);
+  });
+  // 如果有审核记录，显示最新一条
+  if(S.reviews.length){const last=S.reviews[S.reviews.length-1];renderReviewPanel(last.review,last.attempt);}
+}
+
+async function deleteProject(pid,name){
+  if(!confirm(`确定删除项目「${name}」？`))return;
+  try{await fetch(`/api/projects/${pid}`,{method:'DELETE'});addLog('system',`已删除项目「${name}」`);
+    if(currentProjectId===pid){currentProjectId=null;localStorage.removeItem('nf_last_project');resetProjectState();}
+    loadProjectList();
+  }catch(e){addLog('error',`删除失败: ${e.message}`);}
+}
+
+async function deleteCurrentProject(){
+  if(!currentProjectId){alert('当前没有已保存的项目');return;}
+  const name=$('projectName').value||'当前项目';
+  if(!confirm(`确定删除项目「${name}」？所有章节、对话、审核记录将永久丢失。`))return;
+  try{await fetch(`/api/projects/${currentProjectId}`,{method:'DELETE'});
+    addLog('system',`已删除项目「${name}」`);
+    currentProjectId=null;
+    resetProjectState();
+    loadProjectList();
+  }catch(e){addLog('error',`删除失败: ${e.message}`);}
+}
+
+function newProject(){
+  if(S.chapters.length>0||S.chatHistory.length>0){
+    if(!confirm('新建项目将清空当前所有内容。如需保留请先保存。继续吗？'))return;
+  }
+  currentProjectId=null;
+  resetProjectState();
+  $('projectName').value='我的小说';
+  addLog('system','已新建空项目');
+  switchTab('bot1');
+}
+
+function resetProjectState(){
+  S.chatHistory=[];S.chapters=[];S.reviews=[];S.logs=[];S.accumulatedTips=[];
+  S.currentOutline='';S.currentContent='';S.currentSummary='';
+  S.pipelineState=null;
+  rebuildChatUI();updateChapterList();
+  $('outlinePreview').textContent='大纲将在对话过程中自动生成和更新';$('outlinePreview').className='outline-body empty';
+  $('btnConfirmOutline').disabled=true;
+  $('contentOutput').textContent='等待Bot2创作内容...';$('contentOutput').className='output-area empty';
+  $('summaryOutput').textContent='等待Bot4生成记忆总结...';$('summaryOutput').className='output-area empty';
+  $('reviewScorePanel').innerHTML='<div style="text-align:center;color:var(--text-muted);padding:30px;font-size:13px;font-style:italic;">尚无审核结果</div>';
+  $('logPanel').innerHTML='';$('rhistoryPanel').innerHTML='';
+  $('wordCount').textContent='';$('retryInfo').textContent='';$('chapterInfo').textContent='新章节';
+  hideAllErrors();
+}
+
+async function exportProject(){
+  if(!currentProjectId&&S.chapters.length===0){alert('没有可导出的内容');return;}
+  await saveProject();if(!currentProjectId)return;
+  try{const r=await fetch(`/api/projects/${currentProjectId}/export`,{method:'POST'});const d=await r.json();
+    const blob=new Blob([d.text],{type:'text/plain;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=($('projectName').value||'novel')+'.txt';a.click();URL.revokeObjectURL(a.href);
+    addLog('system',`已导出，共${d.word_count}字`);
+  }catch(e){addLog('error',`导出失败: ${e.message}`);}
+}
+
+const _autoSaveAfterChapter=()=>{if(currentProjectId||S.chapters.length>0)saveProject(false);};
+
+// 每次模型回复完毕时自动保存（有项目ID或有内容就保存）
+const _autoSave=()=>{if(currentProjectId||S.chatHistory.length>0||S.chapters.length>0)saveProject(true);};
+
+// ============================================================
+// 文风选择和字数设置
+// ============================================================
+let allStyles=[];
+let selectedStyleId='';
+
+// 预设文风ID列表（不可删除）
+const BUILTIN_STYLE_IDS=new Set(['literary','wuxia','xuanhuan','suspense','urban','romance','scifi','humor']);
+
+async function loadStyles(){
+  try{
+    const r=await fetch('/api/styles');const d=await r.json();
+    allStyles=d.styles||[];
+    if(d.default_word_count) $('wordCountInput').value=d.default_word_count;
+    renderStyleGrid();
+    const last=localStorage.getItem('nf_style_id');
+    if(last) selectStyle(last, true);
+  }catch(e){console.warn('加载文风失败',e);}
+}
+
+function renderStyleGrid(){
+  const grid=$('styleGrid');
+  if(!allStyles.length){grid.innerHTML='<div style="font-size:11px;color:var(--text-muted);grid-column:1/-1">无可用文风</div>';return;}
+  grid.innerHTML=allStyles.map(s=>{
+    const isCustom=!BUILTIN_STYLE_IDS.has(s.id);
+    const activeClass=s.id===selectedStyleId?' active':'';
+    const customBadge=isCustom?'<span class="sc-custom">自定义</span>':'';
+    const actions=isCustom?`<div class="sc-actions"><button onclick="event.stopPropagation();editStyle('${s.id}')">编辑</button><button class="sc-del" onclick="event.stopPropagation();deleteStyle('${s.id}')">删除</button></div>`:'';
+    return `<div class="style-card${activeClass}" data-id="${s.id}" onclick="selectStyle('${s.id}')"><div class="sc-name">${s.name}${customBadge}</div><div class="sc-desc">${s.desc}</div>${actions}</div>`;
+  }).join('');
+}
+
+function selectStyle(id, silent){
+  if(selectedStyleId===id){
+    selectedStyleId='';
+    localStorage.removeItem('nf_style_id');
+    $('stylePreview').classList.remove('show');
+  }else{
+    selectedStyleId=id;
+    localStorage.setItem('nf_style_id',id);
+    const style=allStyles.find(s=>s.id===id);
+    if(style&&style.example){
+      $('stylePreview').textContent=style.example;
+      $('stylePreview').classList.add('show');
+    }else{
+      $('stylePreview').classList.remove('show');
+    }
+  }
+  renderStyleGrid();
+  if(!silent) addLog('system', selectedStyleId?`已选择文风：${allStyles.find(s=>s.id===selectedStyleId)?.name||id}`:'已取消文风选择');
+}
+
+function getStyleId(){ return selectedStyleId; }
+function getWordCount(){ return parseInt($('wordCountInput').value)||800; }
+
+// ---- Bot2 设置面板折叠 ----
+function toggleBot2Settings(){
+  const body=$('bot2SettingsBody'), arrow=$('bot2SettingsArrow');
+  body.classList.toggle('collapsed');
+  arrow.classList.toggle('collapsed');
+}
+
+// ---- 文风弹窗控制 ----
+function openStyleModal(editId){
+  $('smEditId').value=editId||'';
+  if(editId){
+    const s=allStyles.find(x=>x.id===editId);
+    if(s){
+      $('styleModalTitle').textContent='\u270f\ufe0f 编辑文风';
+      $('smName').value=s.name;
+      $('smDesc').value=s.desc;
+      $('smExample').value=s.example;
+    }
+  }else{
+    $('styleModalTitle').textContent='\u270f\ufe0f 导入文风';
+    $('smName').value='';$('smDesc').value='';$('smExample').value='';
+  }
+  $('styleModalOverlay').classList.add('show');
+}
+
+function closeStyleModal(){
+  $('styleModalOverlay').classList.remove('show');
+}
+
+function editStyle(id){ openStyleModal(id); }
+
+async function deleteStyle(id){
+  const s=allStyles.find(x=>x.id===id);
+  if(!s)return;
+  if(!confirm(`确定删除文风「${s.name}」？`))return;
+  allStyles=allStyles.filter(x=>x.id!==id);
+  if(selectedStyleId===id){selectedStyleId='';localStorage.removeItem('nf_style_id');$('stylePreview').classList.remove('show');}
+  await _pushStylesToServer();
+  renderStyleGrid();
+  addLog('system',`已删除文风「${s.name}」`);
+}
+
+async function saveStyleFromModal(){
+  const name=$('smName').value.trim();
+  const desc=$('smDesc').value.trim();
+  const example=$('smExample').value.trim();
+  if(!name){alert('请填写文风名称');$('smName').focus();return;}
+  if(!example){alert('请提供示例片段');$('smExample').focus();return;}
+
+  const editId=$('smEditId').value;
+  if(editId){
+    // 编辑已有文风
+    const idx=allStyles.findIndex(x=>x.id===editId);
+    if(idx>=0){allStyles[idx].name=name;allStyles[idx].desc=desc;allStyles[idx].example=example;}
+  }else{
+    // 新增
+    const id='custom_'+Date.now().toString(36);
+    allStyles.push({id,name,desc:desc||name,example,custom:true});
+  }
+  await _pushStylesToServer();
+  renderStyleGrid();
+  closeStyleModal();
+  addLog('system',editId?`文风「${name}」已更新`:`已导入文风「${name}」`);
+}
+
+async function _pushStylesToServer(){
+  try{
+    await fetch('/api/styles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({styles:allStyles,default_word_count:getWordCount()})});
+  }catch(e){console.warn('保存文风失败',e);}
+}
+
+// ---- 文件导入 ----
+function handleStyleFileImport(input){
+  const file=input.files&&input.files[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const text=e.target.result;
+    const ext=file.name.split('.').pop().toLowerCase();
+
+    if(ext==='json'){
+      _importFromJSON(text, file.name);
+    }else{
+      // txt / md → 整个内容作为示例片段
+      $('smExample').value=text.trim();
+      // 用文件名作为默认名称
+      const baseName=file.name.replace(/\.\w+$/,'');
+      if(!$('smName').value) $('smName').value=baseName;
+      addLog('system',`已从文件「${file.name}」导入片段（${text.length}字）`);
+    }
+  };
+  reader.readAsText(file,'utf-8');
+  input.value=''; // 允许重复选同一文件
+}
+
+function _importFromJSON(text, fileName){
+  try{
+    const data=JSON.parse(text);
+    // 支持两种格式：
+    // 1. 单个文风对象：{name, desc, example}
+    // 2. 批量数组：[{name,desc,example}, ...]  或 {styles:[...]}
+    let items=[];
+    if(Array.isArray(data)){
+      items=data;
+    }else if(data.styles&&Array.isArray(data.styles)){
+      items=data.styles;
+    }else if(data.name&&data.example){
+      items=[data];
+    }else{
+      // 尝试作为纯文本
+      $('smExample').value=text.trim();
+      return;
+    }
+
+    let count=0;
+    items.forEach(it=>{
+      if(!it.name||!it.example)return;
+      const id=it.id||'custom_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,4);
+      // 避免ID冲突
+      if(allStyles.find(x=>x.id===id))return;
+      allStyles.push({id,name:it.name,desc:it.desc||it.name,example:it.example,custom:true});
+      count++;
+    });
+
+    if(count>0){
+      _pushStylesToServer();
+      renderStyleGrid();
+      closeStyleModal();
+      addLog('system',`从「${fileName}」导入了 ${count} 个文风`);
+    }else if(items.length===1){
+      // 只有一个且已填好字段，显示到表单里让用户确认
+      $('smName').value=items[0].name||'';
+      $('smDesc').value=items[0].desc||'';
+      $('smExample').value=items[0].example||'';
+    }else{
+      alert('JSON格式无法识别，请确保包含 name 和 example 字段');
+    }
+  }catch(e){
+    // JSON解析失败，当作纯文本
+    $('smExample').value=text.trim();
+    addLog('system',`文件不是有效JSON，已作为示例片段导入`);
+  }
+}
+
+// 拖拽支持（需在DOM就绪后调用）
+function initStyleDragDrop(){
+  const drop=$('smFileDrop');
+  if(!drop)return;
+  ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('dragover');}));
+  ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('dragover');}));
+  drop.addEventListener('drop',e=>{
+    const file=e.dataTransfer.files&&e.dataTransfer.files[0];
+    if(file){
+      const dt=new DataTransfer();dt.items.add(file);
+      $('smFileInput').files=dt.files;
+      handleStyleFileImport($('smFileInput'));
+    }
+  });
+}
+
+// ============================================================
+// 页面初始化：从服务端加载配置和项目列表
+// ============================================================
+(async function init(){
+  await loadConfigsFromServer();
+  await loadStyles();
+  await loadBot3Prompts();
+  // 恢复上次选中的自定义提示词
+  const savedB3pId=localStorage.getItem('nf_bot3_prompt_id');
+  if(savedB3pId&&bot3CustomPrompts.find(x=>x.id===savedB3pId)){activeBot3PromptId=savedB3pId;_updateBot3PromptLabel();}
+  await loadProjectList();
+  // 初始化拖拽（此时DOM已就绪，modal在script标签之后）
+  setTimeout(initStyleDragDrop, 0);
+  // 自动加载上次打开的项目
+  const lastPid=localStorage.getItem('nf_last_project');
+  if(lastPid){
+    try{
+      const r=await fetch(`/api/projects/${lastPid}`);
+      if(r.ok) await loadProject(lastPid);
+    }catch{}
+  }
+})();
+</script>
+
+<!-- 文风导入/编辑弹窗 -->
+<div class="style-modal-overlay" id="styleModalOverlay" onclick="if(event.target===this)closeStyleModal()">
+  <div class="style-modal">
+    <h3 id="styleModalTitle">&#9997; 导入文风</h3>
+    <input type="hidden" id="smEditId">
+
+    <div class="sm-field">
+      <label>文风名称</label>
+      <input type="text" id="smName" placeholder="如：赛博朋克、古典散文、第一人称独白...">
+    </div>
+    <div class="sm-field">
+      <label>风格描述</label>
+      <input type="text" id="smDesc" placeholder="简要描述该文风的特点（一句话）">
+    </div>
+    <div class="sm-field">
+      <label>示例片段</label>
+      <textarea id="smExample" placeholder="粘贴一段能体现该文风的小说片段（150-300字为佳）。Bot2会学习这段文字的语言风格来创作。"></textarea>
+      <div class="sm-hint">示例越精准，Bot2的模仿效果越好。建议选择最能代表目标风格的段落。</div>
+    </div>
+
+    <div class="sm-or-divider">或者从文件导入</div>
+
+    <div class="sm-file-drop" id="smFileDrop" onclick="$('smFileInput').click()">
+      &#128196; 点击选择 / 拖拽文件到此处<br>
+      <span style="font-size:10px;color:var(--text-muted)">支持 .txt .md .json 文件</span>
+    </div>
+    <input type="file" id="smFileInput" accept=".txt,.md,.json" style="display:none" onchange="handleStyleFileImport(this)">
+
+    <div class="sm-actions">
+      <button class="sm-btn-cancel" onclick="closeStyleModal()">取消</button>
+      <button class="sm-btn-save" onclick="saveStyleFromModal()">保存文风</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bot3 自定义提示词弹窗 -->
+<div class="style-modal-overlay" id="bot3PromptOverlay" onclick="if(event.target===this)closeBot3PromptModal()">
+  <div class="style-modal" style="width:680px;">
+    <h3>&#9881; Bot3 审核提示词管理</h3>
+    <div style="margin-bottom:12px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+        <label style="font-size:11px;color:var(--text-muted);font-weight:600;">已保存的提示词</label>
+        <button class="btn-import-style" onclick="newBot3Prompt()">+ 新建</button>
+      </div>
+      <div id="bot3PromptList" style="max-height:120px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;background:var(--bg-primary);"></div>
+    </div>
+    <div class="sm-field">
+      <label id="bot3PromptEditLabel">提示词名称</label>
+      <input type="text" id="b3pName" placeholder="例：严格文学审核">
+      <input type="hidden" id="b3pEditId">
+    </div>
+    <div class="sm-field">
+      <label>提示词内容 <span style="font-weight:400;color:var(--accent-blue);font-size:10px">（基于系统默认，可自由修改）</span></label>
+      <textarea id="b3pContent" style="min-height:260px;font-size:11px;line-height:1.5;" placeholder="输入Bot3审核系统提示词..."></textarea>
+    </div>
+    <div class="sm-actions">
+      <button class="sm-btn-cancel" onclick="closeBot3PromptModal()">关闭</button>
+      <button class="sm-btn-save" id="b3pDeleteBtn" onclick="deleteBot3Prompt()" style="background:var(--accent-red);display:none;">删除</button>
+      <button class="sm-btn-save" onclick="saveBot3Prompt()">保存</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

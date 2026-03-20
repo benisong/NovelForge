@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  novel-assistant:
+    build: .
+    container_name: novel-assistant
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - novel-data:/app/data
+    environment:
+      - NOVEL_DATA_DIR=/app/data
+
+volumes:
+  novel-data:
+    driver: local
