@@ -29,12 +29,26 @@ DATA_DIR = Path(os.environ.get("NOVEL_DATA_DIR", Path(__file__).parent / "data")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 STYLES_FILE = DATA_DIR / "writing_styles.json"
+PRESET_STYLES_FILE = Path(__file__).parent / "preset_styles.json"
+
+def _load_preset_styles() -> list:
+    """加载根目录下的预设文风（只读）"""
+    if PRESET_STYLES_FILE.exists():
+        data = json.loads(PRESET_STYLES_FILE.read_text(encoding="utf-8"))
+        return data.get("styles", [])
+    return []
 
 def _load_styles() -> dict:
-    """加载文风配置"""
+    """加载文风配置：预设文风 + 用户自定义文风"""
+    presets = _load_preset_styles()
     if STYLES_FILE.exists():
-        return json.loads(STYLES_FILE.read_text(encoding="utf-8"))
-    return {"styles": [], "default_word_count": 800}
+        user_data = json.loads(STYLES_FILE.read_text(encoding="utf-8"))
+    else:
+        user_data = {"styles": [], "default_word_count": 800}
+    # 预设在前，用户自定义在后，去重（用户同ID覆盖预设）
+    user_ids = {s["id"] for s in user_data.get("styles", [])}
+    merged = [p for p in presets if p["id"] not in user_ids] + user_data.get("styles", [])
+    return {"styles": merged, "default_word_count": user_data.get("default_word_count", 800)}
 
 def _get_style_by_id(style_id: str) -> Optional[dict]:
     """根据ID获取文风"""
@@ -520,7 +534,11 @@ async def bot3_review(req: Bot3ReviewRequest):
             f"参考示例片段：\n---\n{style['example']}\n---\n"
             f"请在「风格一致性」维度重点评判内容是否贴合上述文风要求。\n"
         )
+    import time, random
+    # 添加时间戳和随机数，防止API缓存导致重复审核结果相同
+    cache_breaker = f"[审核请求 #{int(time.time())}-{random.randint(1000,9999)}]"
     messages.append({"role": "user", "content": (
+        f"{cache_breaker}\n"
         f"【大纲要求】\n{req.outline}\n\n"
         f"【待审核的小说内容】\n{req.content}\n\n"
         f"及格分数线：{req.config.pass_score}分"
@@ -545,6 +563,37 @@ def _parse_bot3_tags(result: str, pass_score: float) -> dict:
     """从标签格式解析Bot3审核结果，含JSON兼容降级"""
     import re
 
+    # 中文key到英文key的映射
+    _KEY_MAP = {
+        "文学性": "literary", "literary": "literary",
+        "逻辑性": "logic", "logic": "logic",
+        "风格一致性": "style", "风格": "style", "style": "style",
+        "人味": "ai_feel", "ai_feel": "ai_feel", "人味感": "ai_feel",
+        "维度": "dim", "dim": "dim",
+        "严重程度": "severity", "severity": "severity",
+        "位置": "location", "location": "location",
+        "问题": "problem", "problem": "problem",
+        "建议": "suggestion", "suggestion": "suggestion",
+        "修改建议": "suggestion",
+    }
+    dim_keys = ["literary", "logic", "style", "ai_feel"]
+
+    def _parse_kv_line(line: str) -> tuple:
+        """解析一行kv，支持 = : ： 分隔符"""
+        line = line.strip().lstrip('-').lstrip('*').strip()
+        if not line:
+            return None, None
+        # 尝试 = : ： 三种分隔符
+        for sep in ['=', ':', '：']:
+            if sep in line:
+                k, v = line.split(sep, 1)
+                k = k.strip().lower()
+                v = v.strip()
+                # 映射中文key
+                mapped = _KEY_MAP.get(k, k)
+                return mapped, v
+        return None, None
+
     scores = {}
     analysis = ""
     items = []
@@ -553,14 +602,12 @@ def _parse_bot3_tags(result: str, pass_score: float) -> dict:
     scores_m = re.search(r'<scores>(.*?)</scores>', result, re.DOTALL)
     if scores_m:
         for line in scores_m.group(1).strip().splitlines():
-            line = line.strip()
-            if '=' in line:
-                k, v = line.split('=', 1)
-                k = k.strip()
-                try:
-                    scores[k] = float(v.strip())
-                except ValueError:
-                    pass
+            k, v = _parse_kv_line(line)
+            if k and k in dim_keys:
+                # 提取数字部分（AI可能写 "8分" 或 "8/10"）
+                num_m = re.match(r'(\d+(?:\.\d+)?)', v)
+                if num_m:
+                    scores[k] = float(num_m.group(1))
 
     analysis_m = re.search(r'<analysis>(.*?)</analysis>', result, re.DOTALL)
     if analysis_m:
@@ -569,11 +616,10 @@ def _parse_bot3_tags(result: str, pass_score: float) -> dict:
     for item_m in re.finditer(r'<item>(.*?)</item>', result, re.DOTALL):
         item = {}
         for line in item_m.group(1).strip().splitlines():
-            line = line.strip()
-            if '=' in line:
-                k, v = line.split('=', 1)
-                item[k.strip()] = v.strip()
-        if item.get('dim') or item.get('suggestion'):
+            k, v = _parse_kv_line(line)
+            if k and v:
+                item[k] = v
+        if item.get('dim') or item.get('suggestion') or item.get('problem'):
             items.append({
                 "dim": item.get("dim", "literary"),
                 "severity": item.get("severity", "medium"),
@@ -583,9 +629,7 @@ def _parse_bot3_tags(result: str, pass_score: float) -> dict:
             })
 
     # ---- 2. 标签未提取到分数时，降级尝试JSON ----
-    dim_keys = ["literary", "logic", "style", "ai_feel"]
     if len([k for k in dim_keys if k in scores]) < 4:
-        # 尝试JSON解析
         json_str = result
         try:
             if "```json" in result:
@@ -599,26 +643,52 @@ def _parse_bot3_tags(result: str, pass_score: float) -> dict:
                     json_str = result[fb:lb + 1]
             parsed = json.loads(json_str.strip())
             if isinstance(parsed.get("scores"), dict):
-                scores = parsed["scores"]
+                raw_scores = parsed["scores"]
+                for rk, rv in raw_scores.items():
+                    mapped = _KEY_MAP.get(rk.strip().lower(), rk.strip().lower())
+                    if mapped in dim_keys:
+                        scores[mapped] = float(rv) if not isinstance(rv, (int, float)) else rv
             if parsed.get("analysis"):
                 analysis = str(parsed["analysis"])
             if isinstance(parsed.get("items"), list):
-                items = parsed["items"]
+                for it in parsed["items"]:
+                    if isinstance(it, dict):
+                        items.append({
+                            "dim": _KEY_MAP.get(str(it.get("dim", "literary")).lower(), it.get("dim", "literary")),
+                            "severity": it.get("severity", "medium"),
+                            "location": it.get("location", ""),
+                            "problem": it.get("problem", ""),
+                            "suggestion": it.get("suggestion", ""),
+                        })
             elif parsed.get("suggestions"):
                 items = [{"dim": "literary", "severity": "medium", "location": "全文",
                           "problem": "综合建议", "suggestion": str(parsed["suggestions"])}]
-        except (json.JSONDecodeError, KeyError, IndexError, ValueError):
+        except (json.JSONDecodeError, KeyError, IndexError, ValueError, TypeError):
             pass
 
-    # ---- 3. 最后手段：正则逐个提取分数 ----
+    # ---- 3. 最后手段：正则逐个提取分数（支持中英文key和多种分隔符）----
     if len([k for k in dim_keys if k in scores]) < 4:
-        for key in dim_keys:
+        _regex_patterns = {
+            "literary": r'(?:literary|文学性)\s*[=:：]\s*(\d+(?:\.\d+)?)',
+            "logic": r'(?:logic|逻辑性)\s*[=:：]\s*(\d+(?:\.\d+)?)',
+            "style": r'(?:style|风格一致性|风格)\s*[=:：]\s*(\d+(?:\.\d+)?)',
+            "ai_feel": r'(?:ai_feel|人味|人味感)\s*[=:：]\s*(\d+(?:\.\d+)?)',
+        }
+        for key, pattern in _regex_patterns.items():
             if key not in scores:
-                m = re.search(rf'{key}\s*[=:：]\s*(\d+(?:\.\d+)?)', result)
+                m = re.search(pattern, result, re.IGNORECASE)
                 if m:
                     scores[key] = float(m.group(1))
 
-    # ---- 4. 构建最终结果 ----
+    # ---- 4. 如果 analysis 仍为空，尝试从非标签文本提取 ----
+    if not analysis:
+        # 去掉所有标签内容，剩下的可能是综合评价
+        cleaned = re.sub(r'<\w+>.*?</\w+>', '', result, flags=re.DOTALL).strip()
+        lines = [l.strip() for l in cleaned.splitlines() if l.strip() and len(l.strip()) > 10]
+        if lines:
+            analysis = lines[0][:200]
+
+    # ---- 5. 构建最终结果 ----
     if len([k for k in dim_keys if k in scores]) >= 4:
         vals = [scores.get(k, 0) for k in dim_keys]
         real_avg = round(sum(vals) / 4, 1)

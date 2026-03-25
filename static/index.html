@@ -1272,7 +1272,7 @@ async function manualReReview(){
   const isWaiting=!!_userDecisionResolve;
   if(review.passed){
     collectTipsFromReview(review);
-    renderReviewPanel(review,'手动',false,isWaiting);
+    renderReviewPanel(review,'手动',true,isWaiting);
     addLog('bot3',`重新审计通过！平均分：${review.average}`);
   }else{
     renderReviewPanel(review,'手动',true,isWaiting);
@@ -1407,7 +1407,7 @@ function addReviewToHistory(review,attempt){
   const el=$('rhistoryPanel'),item=document.createElement('div');
   item.className='review-history-item';const p=review.passed;
   item.innerHTML=`<span>${'第'+attempt+'次审核 ['+now()+']'}</span><span class="badge ${p?'badge-pass':'badge-fail'}">${p?'通过':'未通过'} ${review.average||0}分</span>`;
-  item.onclick=()=>{renderReviewPanel(review,attempt);switchTab('review');};
+  item.onclick=()=>{renderReviewPanel(review,attempt,true);switchTab('review');};
   el.prepend(item);
 }
 
@@ -1507,9 +1507,9 @@ async function runPipeline(startAttempt, prevContent, config, context){
     addReviewToHistory(review,attempt);
 
     if(review.passed){
-      // 审核通过 → 收集low建议到错题本 → 只读展示，直接继续
+      // 审核通过 → 收集low建议到错题本 → 可编辑展示，直接继续
       collectTipsFromReview(review);
-      renderReviewPanel(review,attempt,false,false);
+      renderReviewPanel(review,attempt,true,false);
       setStep('ps-bot3','done');addLog('bot3',`审核通过！平均分：${review.average}`);_autoSave();break;
     }else{
       // 审核未通过 → 可编辑模式 + 显示用户决策按钮
@@ -1635,7 +1635,7 @@ async function retryBot3AndContinue(ps){
 
   if(review.passed){
     collectTipsFromReview(review);
-    renderReviewPanel(review,ps.attempt,false,false);
+    renderReviewPanel(review,ps.attempt,true,false);
     setStep('ps-bot3','done');addLog('bot3',`审核通过！平均分：${review.average}`);
     // 继续Bot4
     await _runBot4(ps.currentContent, ps.config, ps.context, ps.attempt);
@@ -1999,11 +1999,11 @@ function rebuildReviewHistoryUI(){
     const item=document.createElement('div');item.className='review-history-item';
     const p=r.review&&r.review.passed;
     item.innerHTML=`<span>第${r.attempt}次审核 [${r.time}]</span><span class="badge ${p?'badge-pass':'badge-fail'}">${p?'通过':'未通过'} ${(r.review&&r.review.average)||0}分</span>`;
-    item.onclick=()=>{renderReviewPanel(r.review,r.attempt);switchTab('review');};
+    item.onclick=()=>{renderReviewPanel(r.review,r.attempt,true);switchTab('review');};
     $('rhistoryPanel').prepend(item);
   });
   // 如果有审核记录，显示最新一条
-  if(S.reviews.length){const last=S.reviews[S.reviews.length-1];renderReviewPanel(last.review,last.attempt);}
+  if(S.reviews.length){const last=S.reviews[S.reviews.length-1];renderReviewPanel(last.review,last.attempt,true);}
 }
 
 async function deleteProject(pid,name){
