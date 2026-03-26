@@ -13,12 +13,12 @@
   await loadProjectList();
   // 初始化拖拽（此时DOM已就绪，modal在script标签之后）
   setTimeout(initStyleDragDrop, 0);
-  // 自动加载上次打开的项目
-  const lastPid=localStorage.getItem('nf_last_project');
-  if(lastPid){
-    try{
-      const r=await fetch(`/api/projects/${lastPid}`);
-      if(r.ok) await loadProject(lastPid);
-    }catch{}
-  }
+  // 自动加载最近更新的项目（从服务端获取，不依赖localStorage）
+  try{
+    const r=await fetch('/api/projects/latest');
+    if(r.ok){
+      const d=await r.json();
+      if(d.project_id) await loadProject(d.project_id);
+    }
+  }catch{}
 })();

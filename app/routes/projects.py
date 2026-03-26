@@ -35,6 +35,25 @@ async def list_projects():
     return {"projects": projects}
 
 
+@router.get("/api/projects/latest")
+async def latest_project():
+    """获取最近更新的项目ID"""
+    latest_id = None
+    latest_time = ""
+    for f in DATA_DIR.glob("*.json"):
+        if f.name.startswith("_"):
+            continue
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            updated = data.get("updated", "")
+            if updated > latest_time:
+                latest_time = updated
+                latest_id = data.get("project_id", f.stem)
+        except Exception:
+            continue
+    return {"project_id": latest_id}
+
+
 @router.post("/api/projects/save")
 async def save_project(req: SaveProjectRequest):
     """保存/更新一个项目"""

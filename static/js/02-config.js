@@ -13,7 +13,13 @@ function getConfig(){return{
   bot3:_botCfg('bot3',0.3,2048),
   bot4:_botCfg('bot4',0.5,4096),
   pass_score:parseFloat($('passScore').value)||8,max_retries:parseInt($('maxRetries').value)||3,
+  big_summary_threshold:parseInt($('bigSummaryThreshold').value)||10,
 };}
+// 获取Bot4摘要模型名（复用bot4的url和key，只换model）
+function getBot4AbstractModel(){
+  const el=$('bot4_abstract_model');
+  return el?el.value:'';
+}
 
 // 只验证Bot1必填，Bot2-4可选（空则回退Bot1）
 function validateAll(){
@@ -28,7 +34,9 @@ function copyBot1ToAll(){['bot2','bot3','bot4'].forEach(b=>{$(b+'_url').value=$(
 
 // 获取模型
 async function fetchModels(bot){
-  const url=$(bot+'_url').value,key=$(bot+'_key').value;
+  // bot4_abstract复用bot4的url和key
+  const srcBot=(bot==='bot4_abstract')?'bot4':bot;
+  const url=$(srcBot+'_url').value,key=$(srcBot+'_key').value;
   if(!url||!key){alert('请先填写API地址和密钥');return;}
   const sel=$(bot+'_model');sel.innerHTML='<option value="">获取中...</option>';
   try{const r=await fetch('/api/models',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base_url:url,api_key:key})});const d=await r.json();if(d.error)throw new Error(d.error);sel.innerHTML='';if(!d.models||!d.models.length){sel.innerHTML='<option value="">无可用模型</option>';return;}d.models.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o);});addLog(bot,`获取到 ${d.models.length} 个模型`);autoSaveConfigAfterModelFetch();}

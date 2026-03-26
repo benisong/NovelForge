@@ -77,12 +77,14 @@
       <div class="fg"><label>API地址</label><input id="bot4_url" placeholder="留空则使用Bot1配置"/></div>
       <div class="fg"><label>API密钥</label><input type="password" id="bot4_key" placeholder="留空则使用Bot1配置"/></div>
       <div class="model-row"><div class="fg"><label>模型</label><select id="bot4_model"><option value="">留空则用Bot1模型</option></select></div><button class="btn-sm" onclick="fetchModels('bot4')">获取</button></div>
+      <div class="model-row"><div class="fg"><label>摘要模型</label><select id="bot4_abstract_model"><option value="">留空则用Bot4模型</option></select></div><button class="btn-sm" onclick="fetchModels('bot4_abstract')">获取</button></div>
     </div>
     <div class="sidebar-section">
       <h3>全局设置</h3>
       <div class="config-row">
         <div class="fg"><label>及格分(1-10)</label><input type="number" id="passScore" value="8" min="1" max="10" step="0.5"/></div>
         <div class="fg"><label>最大重写</label><input type="number" id="maxRetries" value="3" min="1" max="10"/></div>
+        <div class="fg"><label>大总结阈值</label><input type="number" id="bigSummaryThreshold" value="10" min="1" max="50"/></div>
       </div>
       <button class="btn-copy" onclick="copyBot1ToAll()">&#128260; 将Bot1配置复制到所有Bot</button>
     </div>
@@ -225,7 +227,36 @@
             <button class="eb-btn-restart" onclick="restartPipeline()">&#9664; 从头开始</button>
           </div>
         </div>
-        <div class="output-area empty" id="summaryOutput">等待Bot4生成记忆总结...</div>
+        <div class="summary-layout">
+          <div class="summary-detail">
+            <div class="summary-detail-toolbar">
+              <button class="summary-view-btn active" id="btnShowCondensed" onclick="toggleSummaryView('condensed')">缩略原文</button>
+              <button class="summary-view-btn" id="btnShowAbstract" onclick="toggleSummaryView('abstract')">摘要</button>
+              <span class="summary-detail-title" id="summaryDetailTitle"></span>
+            </div>
+            <div class="summary-detail-content" id="summaryDetailContent">
+              <div style="text-align:center;color:var(--text-muted);padding:40px;font-size:13px;font-style:italic;">点击右侧列表查看总结详情</div>
+            </div>
+          </div>
+          <div class="summary-sidebar">
+            <div class="summary-list-section">
+              <div class="summary-list-header">小总结（每章）</div>
+              <div class="summary-list" id="smallSummaryList">
+                <div style="font-size:11px;color:var(--text-muted);padding:8px;text-align:center;font-style:italic;">暂无</div>
+              </div>
+            </div>
+            <div class="summary-list-section">
+              <div class="summary-list-header">
+                大总结
+                <button class="btn-sm" onclick="triggerBigSummary()" id="btnBigSummary" style="font-size:10px;padding:2px 8px;">生成大总结</button>
+              </div>
+              <div id="bigSummaryConfirm" style="display:none;"></div>
+              <div class="summary-list" id="bigSummaryList">
+                <div style="font-size:11px;color:var(--text-muted);padding:8px;text-align:center;font-style:italic;">暂无</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -321,6 +352,7 @@
 <script src="/static/js/05-bot3prompts.js"></script>
 <script src="/static/js/06-styles.js"></script>
 <script src="/static/js/07-pipeline.js"></script>
+<script src="/static/js/10-summary.js"></script>
 <script src="/static/js/08-project.js"></script>
 <script src="/static/js/09-init.js"></script>
 

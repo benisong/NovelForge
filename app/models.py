@@ -74,6 +74,21 @@ class CompressSummaryRequest(BaseModel):
     max_chars: Optional[int] = 800
 
 
+class Bot4AbstractRequest(BaseModel):
+    """用廉价模型从缩略版原文生成摘要"""
+    condensed: str
+    config: ProjectConfig
+    abstract_model: str = ""  # 摘要模型名，空则用bot4主模型
+
+
+class BigSummarizeRequest(BaseModel):
+    """大总结：汇总多个小总结"""
+    summaries: list[dict]  # [{chapter, condensed, abstract}]
+    config: ProjectConfig
+    abstract_count: int = 5   # 前N章用摘要
+    condensed_count: int = 5  # 后N章用缩略原文
+
+
 class BotConfigEntry(BaseModel):
     """单个配置条目（一组Bot1-4的配置）"""
     id: str
@@ -103,3 +118,5 @@ class SaveProjectRequest(BaseModel):
     pipeline_state: Optional[dict] = None
     active_tab: str = ""
     accumulated_tips: list[str] = []
+    small_summaries: list[dict] = []   # [{chapter, condensed, abstract, time}]
+    big_summaries: list[dict] = []     # [{fromChapter, toChapter, content, time}]

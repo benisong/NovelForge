@@ -12,15 +12,15 @@ function userDecisionRewrite(){
     const last=S.reviews[S.reviews.length-1];
     last.review={...last.review,...edited};
   }
-  addLog('system','用户选择发回修改');
+  addLog('system','用户选择发回修改');_autoSave();
   if(_userDecisionResolve) _userDecisionResolve('rewrite');
 }
 function userDecisionAccept(){
-  addLog('system','用户接受当前版本，继续Bot4总结');
+  addLog('system','用户接受当前版本，继续Bot4总结');_autoSave();
   if(_userDecisionResolve) _userDecisionResolve('accept');
 }
 function userDecisionFullRewrite(){
-  addLog('system','用户选择全部重写（从头创作）');
+  addLog('system','用户选择全部重写（从头创作）');_autoSave();
   if(_userDecisionResolve) _userDecisionResolve('full_rewrite');
 }
 
@@ -148,18 +148,48 @@ async function runPipeline(startAttempt, prevContent, config, context){
   await _runBot4(currentContent, config, context, attempt);
 }
 
-// 共用Bot4逻辑
+// 共用Bot4逻辑：两步 — 缩略版原文 + 摘要
 async function _runBot4(content, config, context, attempt){
-  setStep('ps-bot4','active');setStatus('busy','Bot4生成记忆总结...');addLog('bot4','开始总结...');switchTab('summary');
-  const sumEl=$('summaryOutput');sumEl.className='output-area';sumEl.textContent='';
+  setStep('ps-bot4','active');setStatus('busy','Bot4生成缩略版原文...');addLog('bot4','开始生成缩略版原文...');switchTab('summary');
+  const detailEl=$('summaryDetailContent');
+  detailEl.textContent='';
+
+  const chapterNum=S.chapters.length+1;
+  let condensed='', abstract='';
 
   try{
-    // 改进2: 传入大纲辅助伏笔追踪
-    const summary=await readSSE('/api/bot4/summarize',{content,config,previous_summary:S.currentSummary,outline:S.currentOutline},(chunk,full)=>{sumEl.textContent=full;sumEl.scrollTop=99999;},S.abortCtrl.signal);
-    if(!summary||!summary.trim())throw new Error('Bot4返回空内容');
-    S.currentSummary=summary;setStep('ps-bot4','done');addLog('bot4','记忆总结完成');
-    // 改进6: 章节完成后检查是否需要压缩记忆
-    await maybeCompressSummary(config);
+    // 第一步：缩略版原文（Bot4主模型）
+    condensed=await readSSE('/api/bot4/summarize',{content,config,outline:S.currentOutline},(chunk,full)=>{
+      detailEl.textContent=full;detailEl.scrollTop=99999;
+    },S.abortCtrl.signal);
+    if(!condensed||!condensed.trim())throw new Error('Bot4缩略版原文返回空内容');
+    addLog('bot4',`缩略版原文完成(${condensed.length}字)`);
+
+    // 第二步：摘要（Bot4廉价模型）
+    setStatus('busy','Bot4生成摘要...');addLog('bot4','开始生成摘要...');
+    detailEl.textContent='';
+    const abstractModel=getBot4AbstractModel();
+    abstract=await readSSE('/api/bot4/abstract',{condensed,config,abstract_model:abstractModel},(chunk,full)=>{
+      detailEl.textContent=full;detailEl.scrollTop=99999;
+    },S.abortCtrl.signal);
+    if(!abstract||!abstract.trim())throw new Error('Bot4摘要返回空内容');
+    addLog('bot4',`摘要完成(${abstract.length}字)`);
+
+    // 存入小总结
+    S.smallSummaries.push({chapter:chapterNum,condensed,abstract,time:now()});
+    S.currentSummary=condensed; // 兼容旧逻辑
+    setStep('ps-bot4','done');addLog('bot4','小总结完成');
+
+    // 更新UI
+    renderSmallSummaryList();
+    showSummaryDetail('small',S.smallSummaries.length-1);
+    toggleSummaryView('condensed');
+
+    // 检查是否提示大总结
+    const pending=checkBigSummaryReminder();
+    if(pending>=config.big_summary_threshold){
+      addLog('bot4',`已累积${pending}章未大总结，建议进行大总结`);
+    }
   }catch(e){
     if(e.name==='AbortError'){addLog('system','已停止');resetPipeline();return;}
     setStep('ps-bot4','fail');setStatus('error','Bot4出错');addLog('error',`Bot4错误: ${e.message}`);
@@ -170,11 +200,10 @@ async function _runBot4(content, config, context, attempt){
   }
 
   // 完成
-  const idx=S.chapters.length+1;
-  S.chapters.push({outline:S.currentOutline,content:S.currentContent,summary:S.currentSummary});
-  updateChapterList();$('chapterInfo').textContent=`第${idx}章已完成`;$('retryInfo').textContent='';
+  S.chapters.push({outline:S.currentOutline,content:S.currentContent,summary:condensed});
+  updateChapterList();$('chapterInfo').textContent=`第${chapterNum}章已完成`;$('retryInfo').textContent='';
   S.pipelineState=null;
-  setStatus('ready','创作完成');addLog('system',`第${idx}章创作完成！`);resetPipeline();_autoSaveAfterChapter();
+  setStatus('ready','创作完成');addLog('system',`第${chapterNum}章创作完成！`);resetPipeline();_autoSaveAfterChapter();
 }
 
 // 从保存的状态重试当前步骤

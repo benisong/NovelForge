@@ -101,7 +101,7 @@ function clearChat(){
   $('outlinePreview').textContent='大纲将在对话过程中自动生成和更新';
   $('outlinePreview').className='outline-body empty';
   $('btnConfirmOutline').disabled=true;
-  addLog('system','已清空全部对话');
+  addLog('system','已清空全部对话');_autoSave();
 }
 
 function rebuildChatUI(){
@@ -180,5 +180,5 @@ function newChat(){
   $('outlinePreview').textContent='大纲将在对话过程中自动生成和更新';
   $('outlinePreview').className='outline-body empty';
   $('btnConfirmOutline').disabled=true;
-  addLog('system','已开始新对话');
+  addLog('system','已开始新对话');_autoSave();
 }

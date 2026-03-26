@@ -37,6 +37,8 @@ async function saveProject(silent){
     pipeline_state:savablePipelineState,
     active_tab:_getActiveTab(),
     accumulated_tips:S.accumulatedTips||[],
+    small_summaries:S.smallSummaries||[],
+    big_summaries:S.bigSummaries||[],
   };
   try{const r=await fetch('/api/projects/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(d.ok){localStorage.setItem('nf_last_project',currentProjectId);if(!silent){addLog('system',`项目「${name}」已保存`);}loadProjectList();}else{if(!silent)addLog('error','保存失败');}}
   catch(e){if(!silent)addLog('error',`保存失败: ${e.message}`);}
@@ -63,6 +65,8 @@ function saveProjectSync(){
     pipeline_state:savablePipelineState,
     active_tab:_getActiveTab(),
     accumulated_tips:S.accumulatedTips||[],
+    small_summaries:S.smallSummaries||[],
+    big_summaries:S.bigSummaries||[],
   };
   navigator.sendBeacon('/api/projects/save', new Blob([JSON.stringify(body)],{type:'application/json'}));
   localStorage.setItem('nf_last_project',currentProjectId);
@@ -109,6 +113,8 @@ async function loadProject(pid){
     S.reviews=d.reviews||[];
     S.logs=d.logs||[];
     S.accumulatedTips=d.accumulated_tips||[];
+    S.smallSummaries=d.small_summaries||[];
+    S.bigSummaries=d.big_summaries||[];
 
     // 恢复聊天UI
     rebuildChatUI();
@@ -117,8 +123,8 @@ async function loadProject(pid){
 
     // 恢复正文
     if(S.currentContent){$('contentOutput').textContent=S.currentContent;$('contentOutput').className='output-area';$('wordCount').textContent=`字数：${S.currentContent.length}`;}
-    // 恢复记忆
-    if(S.currentSummary){$('summaryOutput').textContent=S.currentSummary;$('summaryOutput').className='output-area';}
+    // 恢复总结面板
+    rebuildSummaryUI();
     // 恢复日志
     rebuildLogUI();
     // 恢复审核历史
@@ -234,6 +240,7 @@ function newProject(){
 
 function resetProjectState(){
   S.chatHistory=[];S.chapters=[];S.reviews=[];S.logs=[];S.accumulatedTips=[];
+  S.smallSummaries=[];S.bigSummaries=[];
   S.currentOutline='';S.currentContent='';S.currentSummary='';
   S.pipelineState=null;
   rebuildChatUI();updateChapterList();
@@ -256,7 +263,7 @@ async function exportProject(){
   }catch(e){addLog('error',`导出失败: ${e.message}`);}
 }
 
-const _autoSaveAfterChapter=()=>{if(currentProjectId||S.chapters.length>0)saveProject(false);};
+const _autoSaveAfterChapter=()=>{saveProject(false);};
 
-// 每次模型回复完毕时自动保存（有项目ID或有内容就保存）
-const _autoSave=()=>{if(currentProjectId||S.chatHistory.length>0||S.chapters.length>0)saveProject(true);};
+// AI回复完毕或用户操作后自动保存
+const _autoSave=()=>{saveProject(true);};
