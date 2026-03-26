@@ -247,6 +247,24 @@ body { font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif; backgr
 .b3p-item .b3p-use:hover { background:rgba(203,166,247,.15); }
 .b3p-item .b3p-use.active-use { background:var(--accent-purple); color:#1e1e2e; }
 
+/* 按维度分组折叠 */
+.dim-group { margin-bottom:2px; }
+.dim-group-summary {
+  display:flex; align-items:center; gap:8px; padding:8px 12px; cursor:pointer;
+  background:var(--bg-tertiary); border-radius:6px; font-size:12px; font-weight:600;
+  color:var(--text-secondary); list-style:none; user-select:none;
+}
+.dim-group.has-items>summary { background:rgba(243,139,168,.12); color:var(--accent-red); }
+.dim-group-summary::-webkit-details-marker { display:none; }
+.dim-group-summary::before { content:'\25B6'; font-size:9px; color:var(--text-muted); transition:transform .2s; }
+details.dim-group[open]>summary::before { transform:rotate(90deg); }
+.dim-group-summary .dg-label { flex:1; }
+.dim-group-summary .dg-score { font-weight:800; font-size:14px; }
+.dim-group-summary .dg-count { font-size:10px; color:var(--text-muted); background:var(--bg-primary); padding:1px 6px; border-radius:8px; }
+.dim-group-bar { width:80px; height:6px; background:var(--bg-primary); border-radius:3px; overflow:hidden; }
+.dim-group-bar-fill { height:100%; border-radius:3px; transition:width .6s ease; }
+.dim-group-items { padding:8px 8px 4px 8px; }
+
 /* 逐条建议列表 */
 .review-items-section { margin-top:10px; }
 .review-items-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
@@ -1019,12 +1037,51 @@ function renderReviewPanel(review, attempt, editable, showActions){
   const sc=review.scores||{},avg=review.average||0,p=review.passed;
   const items=review.items||[];
 
-  // === 分数条 ===
-  let bars;
+  // 按维度分组items
+  const grouped={};
+  REVIEW_DIMS.forEach(d=>{grouped[d.key]=[];});
+  items.forEach((it,i)=>{
+    const key=it.dim||'literary';
+    if(!grouped[key]) grouped[key]=[];
+    grouped[key].push({...it,_idx:i});
+  });
+
+  // === 每个维度：分数条 + 折叠建议 ===
+  let dimsHtml=REVIEW_DIMS.map(d=>{
+    const v=sc[d.key]||0;
+    const dimItems=grouped[d.key]||[];
+    const hasItems=dimItems.length>0;
+    const openAttr='';
+
+    // 分数输入或只读
+    const scoreEl=editable
+      ?`<input type="number" class="score-edit-input" id="edit-score-${d.key}" value="${v}" min="0" max="10" step="0.5">`
+      :`<span class="dg-score" style="color:${scoreColor(v)}">${v}</span>`;
+
+    // 折叠建议内容
+    let itemsInner='';
+    if(hasItems){
+      dimItems.forEach(it=>{itemsInner+=_renderOneItem(it,it._idx,editable);});
+    }else{
+      itemsInner=`<div style="font-size:11px;color:var(--text-muted);padding:8px;text-align:center;font-style:italic;">该维度暂无具体建议</div>`;
+    }
+
+    const countBadge=hasItems?`<span class="dg-count">${dimItems.length}条建议</span>`:'';
+
+    return `<details class="dim-group${hasItems?' has-items':''}"${openAttr}>
+      <summary class="dim-group-summary" title="${d.desc}">
+        <span class="dg-label">${d.label}</span>
+        ${countBadge}
+        <div class="dim-group-bar"><div class="dim-group-bar-fill" id="bar-${d.key}" style="width:${v*10}%;background:${scoreColor(v)}"></div></div>
+        ${scoreEl}
+      </summary>
+      <div class="dim-group-items" id="dimItems-${d.key}">${itemsInner}</div>
+    </details>`;
+  }).join('');
+
+  // 新增建议按钮
   if(editable){
-    bars=REVIEW_DIMS.map(d=>{const v=sc[d.key]||0;return`<div class="score-bar-row"><div class="score-bar-label"><span class="sbl-name" title="${d.desc}">${d.label}</span><input type="number" class="score-edit-input" id="edit-score-${d.key}" value="${v}" min="0" max="10" step="0.5"></div><div class="score-bar-track"><div class="score-bar-fill" id="bar-${d.key}" style="width:${v*10}%;background:${scoreColor(v)}"></div></div></div>`;}).join('');
-  }else{
-    bars=REVIEW_DIMS.map(d=>{const v=sc[d.key]||0;return`<div class="score-bar-row"><div class="score-bar-label"><span class="sbl-name" title="${d.desc}">${d.label}</span><span class="sbl-val" style="color:${scoreColor(v)}">${v}</span></div><div class="score-bar-track"><div class="score-bar-fill" style="width:${v*10}%;background:${scoreColor(v)}"></div></div></div>`;}).join('');
+    dimsHtml+=`<div style="text-align:right;margin-top:4px;"><button class="btn-add-item" onclick="_addReviewItem()">+ 新增建议</button></div>`;
   }
 
   // === 平均分 ===
@@ -1038,18 +1095,13 @@ function renderReviewPanel(review, attempt, editable, showActions){
     analysisHtml=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;font-weight:600">综合评价</div><div class="review-detail-text">${review.analysis||'无'}</div>`;
   }
 
-  // === 逐条建议列表 ===
-  let itemsHtml=`<div class="review-items-section"><div class="review-items-header"><span class="rih-title">修改建议 (${items.length}条)${editable?' <span style="font-weight:400;color:var(--accent-blue)">&mdash; 可编辑/删除/新增</span>':''}</span>${editable?'<button class="btn-add-item" onclick="_addReviewItem()">+ 新增建议</button>':''}</div><div id="reviewItemsList">`;
-  items.forEach((it,i)=>{itemsHtml+=_renderOneItem(it,i,editable);});
-  itemsHtml+=`</div></div>`;
-
   // === 操作按钮 ===
   let actionsHtml='';
   if(showActions){
     actionsHtml=`<div class="review-action-bar" id="reviewActionBar">
-      <button class="btn-rewrite" onclick="userDecisionRewrite()">&#128260; 发回修改</button>
-      <button class="btn-accept" onclick="userDecisionAccept()">&#10004; 接受并继续</button>
-      <button class="btn-skip-review" onclick="userDecisionForcePass()">&#9193; 跳过审核直接完成</button>
+      <button class="btn-accept" onclick="userDecisionAccept()">&#10004; 通过</button>
+      <button class="btn-rewrite" onclick="userDecisionRewrite()">&#128260; 按建议重写</button>
+      <button class="btn-rewrite" style="background:var(--accent-red);color:#fff;" onclick="userDecisionFullRewrite()">&#128259; 全部重写</button>
     </div>`;
     if(editable) actionsHtml+=`<div class="edit-mode-hint">可自由编辑分数和建议条目，Bot2将参考您的修改意见进行重写</div>`;
   }
@@ -1058,12 +1110,12 @@ function renderReviewPanel(review, attempt, editable, showActions){
   let rawHtml='';
   if(review._raw_preview && review.average===0 && review.retry_hint){
     rawHtml=`<details style="margin-top:10px;border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--bg-card)">
-      <summary style="cursor:pointer;font-size:12px;color:var(--accent-red);font-weight:600">⚠ 解析失败 — 点击查看AI原始回复</summary>
+      <summary style="cursor:pointer;font-size:12px;color:var(--accent-red);font-weight:600">&#9888; 解析失败 - 点击查看AI原始回复</summary>
       <pre style="margin-top:6px;white-space:pre-wrap;word-break:break-all;font-size:11px;max-height:300px;overflow:auto;color:var(--text-muted)">${review._raw_preview.replace(/</g,'&lt;')}</pre>
     </details>`;
   }
 
-  $('reviewScorePanel').innerHTML=bars+avgHtml+analysisHtml+itemsHtml+rawHtml+actionsHtml;
+  $('reviewScorePanel').innerHTML=dimsHtml+avgHtml+analysisHtml+rawHtml+actionsHtml;
 
   // 绑定分数编辑的实时更新
   if(editable){
@@ -1112,48 +1164,98 @@ function _renderOneItem(it, idx, editable){
 
 function _escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
+// 获取所有维度items容器中的review-item
+function _getAllReviewItems(){
+  const all=[];
+  REVIEW_DIMS.forEach(d=>{
+    const container=$('dimItems-'+d.key);
+    if(container) container.querySelectorAll('.review-item').forEach(el=>all.push(el));
+  });
+  return all;
+}
+
 // 删除一条建议
 function _deleteReviewItem(idx){
-  const list=$('reviewItemsList');
-  if(!list)return;
-  const items=list.querySelectorAll('.review-item');
-  if(items[idx]) items[idx].remove();
-  // 重新编号data-idx
-  list.querySelectorAll('.review-item').forEach((el,i)=>{
+  const all=_getAllReviewItems();
+  if(all[idx]) {
+    const container=all[idx].parentElement;
+    all[idx].remove();
+    // 如果该维度下没有items了，显示空提示
+    if(container && container.querySelectorAll('.review-item').length===0){
+      container.innerHTML='<div style="font-size:11px;color:var(--text-muted);padding:8px;text-align:center;font-style:italic;">该维度暂无具体建议</div>';
+    }
+    _updateDimGroupCounts();
+  }
+  // 重新编号全局idx
+  _reindexAllItems();
+}
+
+// 新增一条空白建议（添加到文学性维度，用户可通过下拉框修改）
+function _addReviewItem(){
+  const targetDim='literary';
+  const container=$('dimItems-'+targetDim);
+  if(!container) return;
+  // 如果只有空提示，清掉
+  if(container.querySelectorAll('.review-item').length===0) container.innerHTML='';
+  const idx=_getAllReviewItems().length;
+  const newItem={dim:targetDim,severity:'medium',location:'',problem:'',suggestion:''};
+  container.insertAdjacentHTML('beforeend',_renderOneItem(newItem,idx,true));
+  // 展开该维度
+  const details=container.closest('details.dim-group');
+  if(details) details.open=true;
+  // 滚动到新增条目
+  const last=container.lastElementChild;
+  if(last) last.scrollIntoView({behavior:'smooth',block:'nearest'});
+  _updateDimGroupCounts();
+}
+
+// 重新编号所有items的data-idx
+function _reindexAllItems(){
+  _getAllReviewItems().forEach((el,i)=>{
     el.dataset.idx=i;
-    el.querySelector('.ri-delete').setAttribute('onclick',`_deleteReviewItem(${i})`);
+    const delBtn=el.querySelector('.ri-delete');
+    if(delBtn) delBtn.setAttribute('onclick',`_deleteReviewItem(${i})`);
     el.querySelectorAll('[data-idx]').forEach(f=>f.dataset.idx=i);
   });
-  // 更新条目数
-  const header=document.querySelector('.review-items-header .rih-title');
-  if(header){
-    const cnt=list.querySelectorAll('.review-item').length;
-    header.innerHTML=`修改建议 (${cnt}条) <span style="font-weight:400;color:var(--accent-blue)">&mdash; 可编辑/删除/新增</span>`;
-  }
 }
 
-// 新增一条空白建议
-function _addReviewItem(){
-  const list=$('reviewItemsList');
-  if(!list)return;
-  const idx=list.querySelectorAll('.review-item').length;
-  const newItem={dim:'literary',severity:'medium',location:'',problem:'',suggestion:''};
-  list.insertAdjacentHTML('beforeend',_renderOneItem(newItem,idx,true));
-  // 滚动到新增的条目
-  const last=list.lastElementChild;
-  if(last) last.scrollIntoView({behavior:'smooth',block:'nearest'});
-  // 更新条目数
-  const header=document.querySelector('.review-items-header .rih-title');
-  if(header){
-    header.innerHTML=`修改建议 (${idx+1}条) <span style="font-weight:400;color:var(--accent-blue)">&mdash; 可编辑/删除/新增</span>`;
-  }
+// 更新各维度的建议条数badge
+function _updateDimGroupCounts(){
+  REVIEW_DIMS.forEach(d=>{
+    const container=$('dimItems-'+d.key);
+    if(!container) return;
+    const cnt=container.querySelectorAll('.review-item').length;
+    const summary=container.closest('details.dim-group')?.querySelector('.dg-count');
+    if(summary) summary.textContent=cnt?cnt+'条建议':'';
+  });
 }
 
-// select变更时更新样式
+// select变更时更新样式，维度变更时移动到对应分组
 function _onItemFieldChange(el){
   if(el.dataset.field==='severity'){
     const item=el.closest('.review-item');
     if(item){item.className='review-item severity-'+el.value;}
+  }
+  if(el.dataset.field==='dim'){
+    const item=el.closest('.review-item');
+    if(!item) return;
+    const newDim=el.value;
+    const target=$('dimItems-'+newDim);
+    if(!target) return;
+    // 清空目标维度的空提示
+    if(target.querySelectorAll('.review-item').length===0) target.innerHTML='';
+    // 移动元素
+    const oldContainer=item.parentElement;
+    target.appendChild(item);
+    // 展开目标维度
+    const details=target.closest('details.dim-group');
+    if(details) details.open=true;
+    // 旧容器如果空了，添加空提示
+    if(oldContainer && oldContainer.querySelectorAll('.review-item').length===0){
+      oldContainer.innerHTML='<div style="font-size:11px;color:var(--text-muted);padding:8px;text-align:center;font-style:italic;">该维度暂无具体建议</div>';
+    }
+    _reindexAllItems();
+    _updateDimGroupCounts();
   }
 }
 
@@ -1193,24 +1295,21 @@ function readEditedReview(){
   const average=cnt?Math.round(sum/cnt*10)/10:0;
   const passScore=getConfig().pass_score||8;
 
-  // 读取逐条建议
+  // 读取逐条建议（从各维度分组容器中收集）
   const items=[];
-  const list=$('reviewItemsList');
-  if(list){
-    list.querySelectorAll('.review-item').forEach(el=>{
-      const get=(field)=>{
-        const f=el.querySelector(`[data-field="${field}"]`);
-        return f?(f.value||f.textContent||''):'';
-      };
-      items.push({
-        dim:get('dim'),
-        severity:get('severity'),
-        location:get('location'),
-        problem:get('problem'),
-        suggestion:get('suggestion'),
-      });
+  _getAllReviewItems().forEach(el=>{
+    const get=(field)=>{
+      const f=el.querySelector(`[data-field="${field}"]`);
+      return f?(f.value||f.textContent||''):'';
+    };
+    items.push({
+      dim:get('dim'),
+      severity:get('severity'),
+      location:get('location'),
+      problem:get('problem'),
+      suggestion:get('suggestion'),
     });
-  }
+  });
 
   // 将items拼成suggestions文本传给Bot2
   const suggestionsText=items.map((it,i)=>{
@@ -1440,9 +1539,9 @@ function userDecisionAccept(){
   addLog('system','用户接受当前版本，继续Bot4总结');
   if(_userDecisionResolve) _userDecisionResolve('accept');
 }
-function userDecisionForcePass(){
-  addLog('system','用户跳过审核，直接完成本章');
-  if(_userDecisionResolve) _userDecisionResolve('force_pass');
+function userDecisionFullRewrite(){
+  addLog('system','用户选择全部重写（从头创作）');
+  if(_userDecisionResolve) _userDecisionResolve('full_rewrite');
 }
 
 // 等待用户在审核面板中做出决策
@@ -1506,25 +1605,18 @@ async function runPipeline(startAttempt, prevContent, config, context){
 
     addReviewToHistory(review,attempt);
 
-    if(review.passed){
-      // 审核通过 → 收集low建议到错题本 → 可编辑展示，直接继续
+    {
+      // 审核完成 → 始终显示操作按钮，等待用户决策
       collectTipsFromReview(review);
-      renderReviewPanel(review,attempt,true,false);
-      setStep('ps-bot3','done');addLog('bot3',`审核通过！平均分：${review.average}`);_autoSave();break;
-    }else{
-      // 审核未通过 → 可编辑模式 + 显示用户决策按钮
-      setStep('ps-bot3','fail');addLog('bot3',`未通过(${review.average}分)，等待用户决策...`);_autoSave();
-      $('retryInfo').textContent=`第${attempt}次未通过`;
-
-      if(attempt>config.max_retries){
-        addLog('bot3','已达最大重写次数');
-        // 仍然显示决策面板，让用户选择接受或编辑
-        renderReviewPanel(review,attempt,true,true);
-        setStatus('ready',`已达最大重写次数(${config.max_retries})，请决定下一步`);
-      }else{
-        renderReviewPanel(review,attempt,true,true);
-        setStatus('ready',`审核未通过(${review.average}分) - 可编辑分数/建议，然后决定下一步`);
-      }
+      const statusMsg=review.passed
+        ?`审核通过(${review.average}分) - 请选择下一步操作`
+        :`审核未通过(${review.average}分) - 请选择下一步操作`;
+      setStep('ps-bot3',review.passed?'done':'fail');
+      addLog('bot3',review.passed?`审核通过！平均分：${review.average}`:`未通过(${review.average}分)，等待用户决策...`);
+      $('retryInfo').textContent=`第${attempt}次审核`;
+      renderReviewPanel(review,attempt,true,true);
+      setStatus('ready',statusMsg);
+      _autoSave();
 
       // 暂停Pipeline，保存状态，等待用户交互
       S.pipelineState={stage:'bot3_decision',attempt,currentContent,config,context};
@@ -1535,21 +1627,23 @@ async function runPipeline(startAttempt, prevContent, config, context){
       _userDecisionResolve=null;
 
       if(decision==='accept'){
-        // 用户接受当前版本 → 继续Bot4
+        // 用户通过 → 继续Bot4
         setStep('ps-bot3','done');break;
-      }else if(decision==='force_pass'){
-        // 跳过Bot4直接完成
-        const idx=S.chapters.length+1;
-        S.chapters.push({outline:S.currentOutline,content:S.currentContent,summary:S.currentSummary||'（用户跳过总结）'});
-        updateChapterList();$('chapterInfo').textContent=`第${idx}章已完成`;$('retryInfo').textContent='';
-        S.pipelineState=null;
-        setStatus('ready','创作完成（跳过总结）');addLog('system',`第${idx}章创作完成（跳过审核和总结）`);resetPipeline();_autoSaveAfterChapter();
-        return; // 跳过Bot4
+      }else if(decision==='full_rewrite'){
+        // 全部重写 → 重置attempt为1，让Bot2从头写（走/api/bot2/write）
+        S._lastSuggestions='';
+        currentContent='';
+        setStep('ps-bot2','');attempt=1;
+        addLog('system','全部重写：Bot2将从头创作');
+        $('btnConfirmOutline').disabled=true;$('btnNewChat').disabled=true;$('btnSend').disabled=true;
+        S.abortCtrl=new AbortController();S.isGenerating=true;
+        $('pipelineBar').classList.add('show');$('btnStop').style.display='';
+        hideAllErrors();
+        continue;
       }else{
-        // rewrite → 继续循环
+        // rewrite → 按建议重写
         S._lastSuggestions=readEditedReview().suggestions;
         setStep('ps-bot2','');attempt++;
-        // 重新进入generating状态
         $('btnConfirmOutline').disabled=true;$('btnNewChat').disabled=true;$('btnSend').disabled=true;
         S.abortCtrl=new AbortController();S.isGenerating=true;
         $('pipelineBar').classList.add('show');$('btnStop').style.display='';
@@ -1633,17 +1727,15 @@ async function retryBot3AndContinue(ps){
 
   addReviewToHistory(review,ps.attempt);
 
-  if(review.passed){
+  {
     collectTipsFromReview(review);
-    renderReviewPanel(review,ps.attempt,true,false);
-    setStep('ps-bot3','done');addLog('bot3',`审核通过！平均分：${review.average}`);
-    // 继续Bot4
-    await _runBot4(ps.currentContent, ps.config, ps.context, ps.attempt);
-  }else{
-    // 未通过 → 可编辑模式 + 等待用户决策
-    setStep('ps-bot3','fail');addLog('bot3',`未通过(${review.average}分)，等待用户决策...`);
+    setStep('ps-bot3',review.passed?'done':'fail');
+    addLog('bot3',review.passed?`审核通过！平均分：${review.average}`:`未通过(${review.average}分)，等待用户决策...`);
     renderReviewPanel(review,ps.attempt,true,true);
-    setStatus('ready',`审核未通过(${review.average}分) - 可编辑分数/建议，然后决定下一步`);
+    const statusMsg=review.passed
+      ?`审核通过(${review.average}分) - 请选择下一步操作`
+      :`审核未通过(${review.average}分) - 请选择下一步操作`;
+    setStatus('ready',statusMsg);
     S.pipelineState={stage:'bot3_decision',attempt:ps.attempt,currentContent:ps.currentContent,config:ps.config,context:ps.context};
     resetPipelineButtons();
 
@@ -1652,11 +1744,8 @@ async function retryBot3AndContinue(ps){
 
     if(decision==='accept'){
       await _runBot4(ps.currentContent, ps.config, ps.context, ps.attempt);
-    }else if(decision==='force_pass'){
-      const idx=S.chapters.length+1;
-      S.chapters.push({outline:S.currentOutline,content:S.currentContent,summary:S.currentSummary||'（用户跳过总结）'});
-      updateChapterList();$('chapterInfo').textContent=`第${idx}章已完成`;S.pipelineState=null;
-      setStatus('ready','创作完成（跳过总结）');addLog('system',`第${idx}章创作完成`);resetPipeline();_autoSaveAfterChapter();
+    }else if(decision==='full_rewrite'){
+      await runPipeline(1, '', ps.config, ps.context);
     }else{
       S._lastSuggestions=readEditedReview().suggestions;
       await runPipeline(ps.attempt+1, ps.currentContent, ps.config, ps.context);
