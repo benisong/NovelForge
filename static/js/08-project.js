@@ -30,6 +30,7 @@ async function saveProject(silent){
     chapters:S.chapters,
     chat_history:S.chatHistory,
     current_outline:S.currentOutline,
+    chapter_outline:S.chapterOutline||'',
     current_summary:S.currentSummary,
     current_content:S.currentContent,
     reviews:S.reviews,
@@ -58,6 +59,7 @@ function saveProjectSync(){
     chapters:S.chapters,
     chat_history:S.chatHistory,
     current_outline:S.currentOutline,
+    chapter_outline:S.chapterOutline||'',
     current_summary:S.currentSummary,
     current_content:S.currentContent,
     reviews:S.reviews,
@@ -108,6 +110,7 @@ async function loadProject(pid){
     S.chatHistory=d.chat_history||[];
     S.chapters=d.chapters||[];
     S.currentOutline=d.current_outline||'';
+    S.chapterOutline=d.chapter_outline||'';
     S.currentSummary=d.current_summary||'';
     S.currentContent=d.current_content||'';
     S.reviews=d.reviews||[];
@@ -119,6 +122,11 @@ async function loadProject(pid){
     // 恢复聊天UI
     rebuildChatUI();
     recalcOutlineFromHistory();
+    // 恢复章节大纲UI
+    if(S.chapterOutline){
+      $('chapterOutlinePreview').textContent=S.chapterOutline;
+      $('chapterOutlinePreview').className='outline-body';
+    }
     updateChapterList();
 
     // 恢复正文
@@ -241,10 +249,11 @@ function newProject(){
 function resetProjectState(){
   S.chatHistory=[];S.chapters=[];S.reviews=[];S.logs=[];S.accumulatedTips=[];
   S.smallSummaries=[];S.bigSummaries=[];
-  S.currentOutline='';S.currentContent='';S.currentSummary='';
+  S.currentOutline='';S.chapterOutline='';S.currentContent='';S.currentSummary='';
   S.pipelineState=null;
   rebuildChatUI();updateChapterList();
-  $('outlinePreview').textContent='大纲将在对话过程中自动生成和更新';$('outlinePreview').className='outline-body empty';
+  $('outlinePreview').textContent='总大纲将在对话过程中自动生成和更新';$('outlinePreview').className='outline-body empty';
+  $('chapterOutlinePreview').textContent='章节大纲将在讨论中生成';$('chapterOutlinePreview').className='outline-body empty';
   $('btnConfirmOutline').disabled=true;
   $('contentOutput').textContent='等待Bot2创作内容...';$('contentOutput').className='output-area empty';
   $('summaryOutput').textContent='等待Bot4生成记忆总结...';$('summaryOutput').className='output-area empty';

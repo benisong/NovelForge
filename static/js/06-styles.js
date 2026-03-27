@@ -52,11 +52,18 @@ function selectStyle(id, silent){
 function getStyleId(){ return selectedStyleId; }
 function getWordCount(){ return parseInt($('wordCountInput').value)||800; }
 
-// ---- Bot2 设置面板折叠 ----
-function toggleBot2Settings(){
-  const body=$('bot2SettingsBody'), arrow=$('bot2SettingsArrow');
+// ---- 大纲区域折叠切换 ----
+function toggleOutlineSection(section){
+  const map={
+    global:{body:'globalOutlineBody',arrow:'globalOutlineArrow'},
+    chapter:{body:'chapterOutlineBody',arrow:'chapterOutlineArrow'},
+    settings:{body:'bot1SettingsBody',arrow:'settingsArrow'},
+  };
+  const m=map[section];if(!m)return;
+  const body=$(m.body), arrow=$(m.arrow), header=body.previousElementSibling;
   body.classList.toggle('collapsed');
-  arrow.classList.toggle('collapsed');
+  arrow.classList.toggle('rotated');
+  if(header) header.classList.toggle('collapsed');
 }
 
 // ---- 文风弹窗控制 ----

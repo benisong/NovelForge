@@ -1,19 +1,54 @@
 // 03-chat.js - Bot1 chat functions, context building, and chat UI management
 
-// ---- 改进3: 构建Bot1增强上下文（章节脉络 + 故事记忆）----
+// ---- 构建Bot1上下文（大总结 + 摘要，用于讨论规划阶段）----
 function buildBot1Context(){
   let parts=[];
-  if(S.chapters.length>0){
-    const outlines=S.chapters.map((ch,i)=>{
-      // 从大纲中提取第一行作为标题
-      const firstLine=(ch.outline||'').split('\n').find(l=>l.trim())||`第${i+1}章`;
-      return `第${i+1}章：${firstLine.replace(/^#+\s*/,'').substring(0,40)}`;
-    });
-    parts.push('【已完成章节脉络】\n'+outlines.join('\n'));
+
+  // 1. 大总结（放最前面，高注意力位置）
+  if(S.bigSummaries&&S.bigSummaries.length>0){
+    const latest=S.bigSummaries[S.bigSummaries.length-1];
+    parts.push('【全局记忆（大总结）】\n'+latest.content);
   }
-  if(S.currentSummary){
+
+  // 2. 各章摘要（abstract）
+  if(S.smallSummaries&&S.smallSummaries.length>0){
+    // 如果有大总结，只取大总结之后的摘要
+    const lastBigTo=(S.bigSummaries&&S.bigSummaries.length>0)?S.bigSummaries[S.bigSummaries.length-1].toChapter:0;
+    const pendingAbstracts=S.smallSummaries.filter(s=>s.chapter>lastBigTo);
+    if(pendingAbstracts.length>0){
+      const lines=pendingAbstracts.map(s=>`第${s.chapter}章摘要：\n${s.abstract}`);
+      parts.push('【各章摘要】\n'+lines.join('\n\n'));
+    }
+  }
+
+  // 3. 兼容旧项目（无小总结时用旧的currentSummary）
+  if(parts.length===0&&S.currentSummary){
     parts.push('【故事记忆】\n'+S.currentSummary);
   }
+
+  return parts.join('\n\n');
+}
+
+// ---- 构建Bot2上下文（大总结 + condensed，用于创作阶段）----
+function buildBot2Context(){
+  let parts=[];
+
+  // 1. 大总结
+  if(S.bigSummaries&&S.bigSummaries.length>0){
+    const latest=S.bigSummaries[S.bigSummaries.length-1];
+    parts.push('【全局记忆（大总结）】\n'+latest.content);
+  }
+
+  // 2. 大总结之后的章节缩略原文（condensed）
+  if(S.smallSummaries&&S.smallSummaries.length>0){
+    const lastBigTo=(S.bigSummaries&&S.bigSummaries.length>0)?S.bigSummaries[S.bigSummaries.length-1].toChapter:0;
+    const pendingCondensed=S.smallSummaries.filter(s=>s.chapter>lastBigTo);
+    if(pendingCondensed.length>0){
+      const lines=pendingCondensed.map(s=>`第${s.chapter}章缩略：\n${s.condensed}`);
+      parts.push('【近期章节缩略原文】\n'+lines.join('\n\n'));
+    }
+  }
+
   return parts.join('\n\n');
 }
 
@@ -96,10 +131,10 @@ function clearChat(){
   if(S.chatHistory.length===0)return;
   if(!confirm('确定清空所有对话消息？大纲也会被清除。'))return;
   S.chatHistory=[];
-  S.currentOutline='';
+  S.currentOutline='';S.chapterOutline='';
   rebuildChatUI();
-  $('outlinePreview').textContent='大纲将在对话过程中自动生成和更新';
-  $('outlinePreview').className='outline-body empty';
+  $('outlinePreview').textContent='总大纲将在对话过程中自动生成和更新';$('outlinePreview').className='outline-body empty';
+  $('chapterOutlinePreview').textContent='章节大纲将在讨论中生成';$('chapterOutlinePreview').className='outline-body empty';
   $('btnConfirmOutline').disabled=true;
   addLog('system','已清空全部对话');_autoSave();
 }
@@ -117,15 +152,23 @@ function rebuildChatUI(){
 }
 
 function recalcOutlineFromHistory(){
-  // 从最后一条assistant消息中提取outline
-  let found=false;
+  let foundGlobal=false, foundChapter=false;
   for(let i=S.chatHistory.length-1;i>=0;i--){
     if(S.chatHistory[i].role==='assistant'){
-      const ol=extractOutline(S.chatHistory[i].content);
-      if(ol){S.currentOutline=ol;$('outlinePreview').textContent=ol;$('outlinePreview').className='outline-body';$('btnConfirmOutline').disabled=false;found=true;break;}
+      if(!foundGlobal){
+        const ol=extractOutline(S.chatHistory[i].content);
+        if(ol){S.currentOutline=ol;$('outlinePreview').textContent=ol;$('outlinePreview').className='outline-body';foundGlobal=true;}
+      }
+      if(!foundChapter){
+        const col=extractChapterOutline(S.chatHistory[i].content);
+        if(col){S.chapterOutline=col;$('chapterOutlinePreview').textContent=col;$('chapterOutlinePreview').className='outline-body';foundChapter=true;}
+      }
+      if(foundGlobal&&foundChapter) break;
     }
   }
-  if(!found){S.currentOutline='';$('outlinePreview').textContent='大纲将在对话过程中自动生成和更新';$('outlinePreview').className='outline-body empty';$('btnConfirmOutline').disabled=true;}
+  if(!foundGlobal){S.currentOutline='';$('outlinePreview').textContent='总大纲将在对话过程中自动生成和更新';$('outlinePreview').className='outline-body empty';}
+  if(!foundChapter){S.chapterOutline='';$('chapterOutlinePreview').textContent='章节大纲将在讨论中生成';$('chapterOutlinePreview').className='outline-body empty';}
+  $('btnConfirmOutline').disabled=!(foundGlobal||foundChapter);
 }
 
 function chatKeydown(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}
@@ -154,8 +197,14 @@ async function sendChat(){
     const fullText=await readSSE('/api/bot1/chat',{messages:S.chatHistory,config,context:buildBot1Context()},
     (chunk,full)=>{
       textEl.textContent=stripOutline(full)||'...';
+      // 总大纲
       const ol=extractOutline(full);
-      if(ol){$('outlinePreview').textContent=ol;$('outlinePreview').className='outline-body';S.currentOutline=ol;$('btnConfirmOutline').disabled=false;}
+      if(ol){$('outlinePreview').textContent=ol;$('outlinePreview').className='outline-body';S.currentOutline=ol;}
+      // 章节大纲
+      const col=extractChapterOutline(full);
+      if(col){$('chapterOutlinePreview').textContent=col;$('chapterOutlinePreview').className='outline-body';S.chapterOutline=col;$('btnConfirmOutline').disabled=false;}
+      // 只要有任一大纲就允许确认
+      if(ol||col) $('btnConfirmOutline').disabled=false;
       $('chatMessages').scrollTop=99999;
     },S.abortCtrl.signal);
 
@@ -163,7 +212,10 @@ async function sendChat(){
     bubble.dataset.idx=assistIdx;
     textEl.textContent=stripOutline(fullText);
     const ol=extractOutline(fullText);
-    if(ol){S.currentOutline=ol;$('outlinePreview').textContent=ol;$('outlinePreview').className='outline-body';$('btnConfirmOutline').disabled=false;}
+    if(ol){S.currentOutline=ol;$('outlinePreview').textContent=ol;$('outlinePreview').className='outline-body';}
+    const col=extractChapterOutline(fullText);
+    if(col){S.chapterOutline=col;$('chapterOutlinePreview').textContent=col;$('chapterOutlinePreview').className='outline-body';}
+    if(ol||col) $('btnConfirmOutline').disabled=false;
     addLog('bot1','回复完成');setStatus('ready','就绪 - 可继续对话或确认大纲');
     _autoSave();
   }catch(e){
@@ -175,10 +227,10 @@ async function sendChat(){
 }
 
 function newChat(){
-  S.chatHistory=[];S.currentOutline='';
+  S.chatHistory=[];S.currentOutline='';S.chapterOutline='';
   rebuildChatUI();
-  $('outlinePreview').textContent='大纲将在对话过程中自动生成和更新';
-  $('outlinePreview').className='outline-body empty';
+  $('outlinePreview').textContent='总大纲将在对话过程中自动生成和更新';$('outlinePreview').className='outline-body empty';
+  $('chapterOutlinePreview').textContent='章节大纲将在讨论中生成';$('chapterOutlinePreview').className='outline-body empty';
   $('btnConfirmOutline').disabled=true;
   addLog('system','已开始新对话');_autoSave();
 }

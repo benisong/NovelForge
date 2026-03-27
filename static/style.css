@@ -131,13 +131,23 @@ body { font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif; backgr
 .btn-send:hover { opacity:.9; }
 .btn-send:disabled { opacity:.4; cursor:not-allowed; }
 
-.outline-side { width:42%; min-width:280px; display:flex; flex-direction:column; background:var(--bg-secondary); }
-.outline-header { padding:10px 14px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
-.outline-header h4 { font-size:13px; color:var(--accent-blue); font-weight:600; }
-.outline-header .badge-live { font-size:10px; padding:2px 8px; border-radius:8px; background:rgba(166,227,161,.12); color:var(--accent-green); }
-.outline-body { flex:1; overflow-y:auto; padding:14px; font-size:13px; line-height:1.8; white-space:pre-wrap; word-break:break-word; color:var(--text-secondary); }
-.outline-body.empty { display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-style:italic; }
+.outline-side { width:42%; min-width:280px; display:flex; flex-direction:column; background:var(--bg-secondary); position:relative; }
+.outline-section { border-bottom:1px solid var(--border); display:flex; flex-direction:column; }
+.outline-section.flex-grow { flex:1; min-height:0; }
+.outline-section-header {
+  padding:8px 14px; display:flex; align-items:center; justify-content:space-between;
+  cursor:pointer; user-select:none; font-size:13px; font-weight:600; color:var(--accent-blue);
+  background:var(--bg-surface);
+}
+.outline-section-header:hover { background:var(--bg-tertiary); }
+.outline-section-arrow { font-size:10px; transition:transform .2s; }
+.outline-section-arrow.rotated { transform:rotate(90deg); }
+.outline-section-body { overflow-y:auto; transition:max-height .3s ease; }
+.outline-section-body.collapsed { max-height:0 !important; overflow:hidden; }
+.outline-body { padding:10px 14px; font-size:13px; line-height:1.8; white-space:pre-wrap; word-break:break-word; color:var(--text-secondary); }
+.outline-body.empty { display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-style:italic; min-height:60px; }
 .outline-actions { padding:10px 14px; border-top:1px solid var(--border); display:flex; gap:8px; }
+.badge-live { font-size:10px; padding:2px 8px; border-radius:8px; background:rgba(166,227,161,.12); color:var(--accent-green); }
 
 .btn-primary { padding:8px 20px; background:linear-gradient(135deg,var(--accent-blue),var(--accent-purple)); border:none; border-radius:6px; color:var(--bg-primary); font-size:13px; font-weight:600; cursor:pointer; }
 .btn-primary:hover { opacity:.9; }
@@ -370,34 +380,11 @@ details.dim-group[open]>summary::before { transform:rotate(90deg); }
 }
 .style-preview.show { display:block; }
 
-/* Bot2 创作设置工具栏 */
-.bot2-settings {
-  border-bottom:1px solid var(--border); background:var(--bg-surface);
-  flex-shrink:0;
-}
-.bot2-settings-header {
-  display:flex; justify-content:space-between; align-items:center;
-  padding:8px 12px; cursor:pointer; user-select:none;
-  font-size:13px; font-weight:600; color:var(--accent-purple);
-}
-.bot2-settings-header:hover { background:var(--bg-tertiary); }
-.bot2-settings-toggle { font-size:10px; transition:transform .2s; }
-.bot2-settings-toggle.collapsed { transform:rotate(-90deg); }
-.bot2-settings-body {
-  padding:8px 12px 12px; overflow:hidden; transition:max-height .25s ease, padding .25s ease;
-  max-height:500px;
-}
-.bot2-settings-body.collapsed {
-  max-height:0; padding-top:0; padding-bottom:0;
-}
-.bot2-row {
-  display:flex; gap:16px; align-items:flex-start;
-}
-.bot2-style-section { flex:1; min-width:0; }
-.bot2-style-section .writing-settings { padding:0; }
-.bot2-style-section .style-grid { grid-template-columns:repeat(auto-fill, minmax(110px, 1fr)); }
-.bot2-wc-section { width:220px; flex-shrink:0; }
-.bot2-wc-section h4 { font-size:12px; color:var(--accent-purple); margin-bottom:8px; font-weight:600; }
+/* Bot1 创作设置子区域 */
+.bot1-style-section { min-width:0; }
+.bot1-style-section .style-grid { grid-template-columns:repeat(auto-fill, minmax(110px, 1fr)); }
+.bot1-wc-section { margin-top:10px; }
+.bot1-wc-section h4 { font-size:12px; color:var(--accent-purple); margin-bottom:8px; font-weight:600; }
 
 .word-count-row { display:flex; align-items:center; gap:8px; margin-top:6px; }
 .word-count-row label { font-size:11px; color:var(--text-secondary); white-space:nowrap; }

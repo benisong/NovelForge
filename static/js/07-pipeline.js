@@ -30,10 +30,15 @@ function waitForUserDecision(){
 }
 
 async function confirmOutline(){
-  if(!S.currentOutline){alert('还没有大纲内容');return;}
+  if(!S.currentOutline&&!S.chapterOutline){alert('还没有大纲内容');return;}
   if(!validateAll())return;
   hideAllErrors();
-  await runPipeline(1, '', getConfig(), buildBot1Context());
+  // 先持久化总大纲和章节大纲
+  await saveProject(true);
+  addLog('system','大纲已持久化，开始创作');
+  // 构建Bot2上下文（大总结 + condensed）
+  const bot2Context=buildBot2Context();
+  await runPipeline(1, '', getConfig(), bot2Context);
 }
 
 async function runPipeline(startAttempt, prevContent, config, context){
@@ -55,10 +60,11 @@ async function runPipeline(startAttempt, prevContent, config, context){
     try{
       const url=attempt===1?'/api/bot2/write':'/api/bot2/rewrite';
       const _sid=getStyleId(),_wc=getWordCount(),_tips=getTipsText(),_pe=getPrevEnding();
-      // 优化：初次仅大纲+风格，不发上下文；重写发大纲+原文+建议，不发上下文
+      // 传总大纲+章节大纲+上下文（condensed）
+      const _chOutline=S.chapterOutline||'';
       const body=attempt===1
-        ?{outline:S.currentOutline,config,style_id:_sid,word_count:_wc,tips:_tips,prev_ending:_pe}
-        :{outline:S.currentOutline,content:currentContent,suggestions:S._lastSuggestions||'',config,style_id:_sid,word_count:_wc,tips:_tips,prev_ending:_pe};
+        ?{outline:S.currentOutline,chapter_outline:_chOutline,config,style_id:_sid,word_count:_wc,tips:_tips,prev_ending:_pe,bot2_context:context}
+        :{outline:S.currentOutline,chapter_outline:_chOutline,content:currentContent,suggestions:S._lastSuggestions||'',config,style_id:_sid,word_count:_wc,tips:_tips,prev_ending:_pe,bot2_context:context};
       currentContent=await readSSE(url,body,(chunk,full)=>{contentEl.textContent=full;contentEl.scrollTop=99999;$('wordCount').textContent=`字数：${full.length}`;},S.abortCtrl.signal);
       if(!currentContent||!currentContent.trim())throw new Error('Bot2返回空内容');
       S.currentContent=currentContent;setStep('ps-bot2','done');addLog('bot2',`创作完成，共${currentContent.length}字`);_autoSave();
@@ -200,7 +206,7 @@ async function _runBot4(content, config, context, attempt){
   }
 
   // 完成
-  S.chapters.push({outline:S.currentOutline,content:S.currentContent,summary:condensed});
+  S.chapters.push({outline:S.currentOutline,chapter_outline:S.chapterOutline,content:S.currentContent,summary:condensed});
   updateChapterList();$('chapterInfo').textContent=`第${chapterNum}章已完成`;$('retryInfo').textContent='';
   S.pipelineState=null;
   setStatus('ready','创作完成');addLog('system',`第${chapterNum}章创作完成！`);resetPipeline();_autoSaveAfterChapter();

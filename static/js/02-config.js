@@ -69,7 +69,8 @@ async function readSSE(url,body,onChunk,signal){
 
 // outline提取
 function extractOutline(text){const m=text.match(/<outline>([\s\S]*?)<\/outline>/i);return m?m[1].trim():null;}
-function stripOutline(text){return text.replace(/<outline>[\s\S]*?<\/outline>/gi,'').trim();}
+function extractChapterOutline(text){const m=text.match(/<chapter_outline>([\s\S]*?)<\/chapter_outline>/i);return m?m[1].trim():null;}
+function stripOutline(text){return text.replace(/<outline>[\s\S]*?<\/outline>/gi,'').replace(/<chapter_outline>[\s\S]*?<\/chapter_outline>/gi,'').trim();}
 
 // ============================================================
 // 配置方案 - 服务端持久化（API密钥/地址/模型）

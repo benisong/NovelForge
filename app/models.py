@@ -34,15 +34,18 @@ class Bot1ChatRequest(BaseModel):
 
 class Bot2WriteRequest(BaseModel):
     outline: str
+    chapter_outline: Optional[str] = ""
     config: ProjectConfig
     style_id: Optional[str] = ""
     word_count: Optional[int] = 800
     tips: Optional[str] = ""
     prev_ending: Optional[str] = ""
+    bot2_context: Optional[str] = ""   # 大总结+condensed
 
 
 class Bot2RewriteRequest(BaseModel):
     outline: str
+    chapter_outline: Optional[str] = ""
     content: str
     suggestions: str
     config: ProjectConfig
@@ -50,6 +53,7 @@ class Bot2RewriteRequest(BaseModel):
     word_count: Optional[int] = 800
     tips: Optional[str] = ""
     prev_ending: Optional[str] = ""
+    bot2_context: Optional[str] = ""   # 大总结+condensed
 
 
 class Bot3ReviewRequest(BaseModel):
@@ -111,6 +115,7 @@ class SaveProjectRequest(BaseModel):
     chapters: list[dict]
     chat_history: list[dict]
     current_outline: str = ""
+    chapter_outline: str = ""
     current_summary: str = ""
     current_content: str = ""
     reviews: list[dict] = []

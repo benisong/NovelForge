@@ -132,11 +132,65 @@
             </div>
           </div>
           <div class="outline-side">
-            <div class="outline-header">
-              <h4>&#128203; 大纲预览</h4>
-              <span class="badge-live" id="outlineLive" style="display:none">&#9679; 实时更新中</span>
+            <span class="badge-live" id="outlineLive" style="display:none;position:absolute;top:8px;right:12px;z-index:1;">&#9679; 实时更新中</span>
+
+            <!-- 总大纲（默认折叠）-->
+            <div class="outline-section">
+              <div class="outline-section-header collapsed" onclick="toggleOutlineSection('global')">
+                <span>&#128203; 总大纲</span>
+                <span class="outline-section-arrow" id="globalOutlineArrow">&#9654;</span>
+              </div>
+              <div class="outline-section-body collapsed" id="globalOutlineBody">
+                <div class="outline-body empty" id="outlinePreview">总大纲将在对话过程中自动生成和更新</div>
+              </div>
             </div>
-            <div class="outline-body empty" id="outlinePreview">大纲将在对话过程中自动生成和更新</div>
+
+            <!-- 当前章节大纲（默认展开）-->
+            <div class="outline-section flex-grow">
+              <div class="outline-section-header" onclick="toggleOutlineSection('chapter')">
+                <span>&#128214; 当前章节大纲</span>
+                <span class="outline-section-arrow rotated" id="chapterOutlineArrow">&#9654;</span>
+              </div>
+              <div class="outline-section-body" id="chapterOutlineBody">
+                <div class="outline-body empty" id="chapterOutlinePreview">章节大纲将在讨论中生成</div>
+              </div>
+            </div>
+
+            <!-- 创作设置（文风+字数）-->
+            <div class="outline-section">
+              <div class="outline-section-header collapsed" onclick="toggleOutlineSection('settings')">
+                <span>&#9997; 创作设置</span>
+                <span class="outline-section-arrow" id="settingsArrow">&#9654;</span>
+              </div>
+              <div class="outline-section-body collapsed" id="bot1SettingsBody">
+                <div style="padding:8px 12px;">
+                  <div class="bot1-style-section">
+                    <div class="style-toolbar">
+                      <h4>文风选择</h4>
+                      <button class="btn-import-style" onclick="openStyleModal()">+ 导入文风</button>
+                    </div>
+                    <div class="style-grid" id="styleGrid">
+                      <div style="font-size:11px;color:var(--text-muted);grid-column:1/-1">加载中...</div>
+                    </div>
+                    <div class="style-preview" id="stylePreview"></div>
+                  </div>
+                  <div class="bot1-wc-section">
+                    <h4>目标字数</h4>
+                    <div class="word-count-row">
+                      <input type="number" id="wordCountInput" value="800" min="200" max="5000" step="100">
+                      <label>字</label>
+                      <div class="wc-presets">
+                        <span class="wc-preset" onclick="$('wordCountInput').value=500">500</span>
+                        <span class="wc-preset" onclick="$('wordCountInput').value=800">800</span>
+                        <span class="wc-preset" onclick="$('wordCountInput').value=1500">1500</span>
+                        <span class="wc-preset" onclick="$('wordCountInput').value=3000">3000</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div class="outline-actions">
               <button class="btn-primary" id="btnConfirmOutline" onclick="confirmOutline()" disabled>&#10004; 确认大纲，开始创作</button>
               <button class="btn-outline" id="btnNewChat" onclick="newChat()">&#128260; 新对话</button>
@@ -153,40 +207,6 @@
           <div class="eb-actions">
             <button class="eb-btn-retry" id="errContentRetry">&#128260; 重试当前步骤</button>
             <button class="eb-btn-restart" onclick="restartPipeline()">&#9664; 从头开始</button>
-          </div>
-        </div>
-        <!-- 创作设置工具栏 -->
-        <div class="bot2-settings" id="bot2Settings">
-          <div class="bot2-settings-header" onclick="toggleBot2Settings()">
-            <span>&#9997; 创作设置</span>
-            <span class="bot2-settings-toggle" id="bot2SettingsArrow">&#9660;</span>
-          </div>
-          <div class="bot2-settings-body" id="bot2SettingsBody">
-            <div class="bot2-row">
-              <div class="bot2-style-section">
-                <div class="style-toolbar">
-                  <h4>文风选择</h4>
-                  <button class="btn-import-style" onclick="openStyleModal()">+ 导入文风</button>
-                </div>
-                <div class="style-grid" id="styleGrid">
-                  <div style="font-size:11px;color:var(--text-muted);grid-column:1/-1">加载中...</div>
-                </div>
-                <div class="style-preview" id="stylePreview"></div>
-              </div>
-              <div class="bot2-wc-section">
-                <h4>目标字数</h4>
-                <div class="word-count-row">
-                  <input type="number" id="wordCountInput" value="800" min="200" max="5000" step="100">
-                  <label>字</label>
-                  <div class="wc-presets">
-                    <span class="wc-preset" onclick="$('wordCountInput').value=500">500</span>
-                    <span class="wc-preset" onclick="$('wordCountInput').value=800">800</span>
-                    <span class="wc-preset" onclick="$('wordCountInput').value=1500">1500</span>
-                    <span class="wc-preset" onclick="$('wordCountInput').value=3000">3000</span>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
         <div class="output-area empty" id="contentOutput" style="flex:1;min-height:0;">等待Bot2创作内容...</div>

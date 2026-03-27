@@ -45,9 +45,11 @@ async def fetch_models(req: FetchModelsRequest):
 
 @router.post("/api/bot1/chat")
 async def bot1_chat(req: Bot1ChatRequest):
-    system_msg = {"role": "system", "content": BOT1_SYSTEM}
+    # 按注意力分布组装：开头放大总结+摘要（高注意力），末尾是用户消息（高注意力）
+    system_content = BOT1_SYSTEM
     if req.context:
-        system_msg["content"] += f"\n\n【之前章节的故事记忆】\n{req.context}"
+        system_content = f"{BOT1_SYSTEM}\n\n{req.context}"
+    system_msg = {"role": "system", "content": system_content}
     messages = [system_msg] + req.messages
 
     async def generate():

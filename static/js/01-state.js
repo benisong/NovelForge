@@ -2,7 +2,8 @@
 
 const S = {
   chatHistory: [],
-  currentOutline: '',
+  currentOutline: '',      // 总大纲
+  chapterOutline: '',      // 当前章节大纲
   currentContent: '',
   currentSummary: '',      // 保留兼容旧项目
   chapters: [],
