@@ -61,7 +61,7 @@ async def bot4_abstract(req: Bot4AbstractRequest):
 
     messages = [
         {"role": "system", "content": BOT4_ABSTRACT_SYSTEM},
-        {"role": "user", "content": f"请为以下章节内容生成结构化摘要：\n\n{req.condensed}"},
+        {"role": "user", "content": f"请为以下章节内容生成结构化摘要：\n\n{req.content or req.condensed}"},
     ]
 
     async def generate():

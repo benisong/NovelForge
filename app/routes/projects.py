@@ -2,12 +2,21 @@
 
 import json
 import re
+import shutil
 import time
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from ..models import SaveProjectRequest
 from ..config import DATA_DIR, STYLES_FILE
 from ..styles import _load_styles
+
+
+class SaveChapterRequest(BaseModel):
+    project_id: str
+    project_name: str
+    chapter_num: int
+    content: str
 
 router = APIRouter()
 
@@ -74,12 +83,44 @@ async def load_project(project_id: str):
     return data
 
 
+def _chapters_dir(project_id: str):
+    """获取项目章节文件夹路径"""
+    safe = re.sub(r'[^\w\-]', '_', project_id)
+    return DATA_DIR / "chapters" / safe
+
+
+@router.post("/api/projects/save-chapter")
+async def save_chapter(req: SaveChapterRequest):
+    """保存正式章节文件"""
+    ch_dir = _chapters_dir(req.project_id)
+    ch_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = re.sub(r'[\\/:*?"<>|]', '_', req.project_name)
+    filename = f"{safe_name}_正式_第{req.chapter_num}章.txt"
+    filepath = ch_dir / filename
+    filepath.write_text(req.content, encoding="utf-8")
+    return {"ok": True, "filename": filename, "path": str(filepath)}
+
+
+@router.get("/api/projects/{project_id}/chapters")
+async def list_chapter_files(project_id: str):
+    """列出项目的正式章节文件"""
+    ch_dir = _chapters_dir(project_id)
+    if not ch_dir.exists():
+        return {"files": []}
+    files = sorted(ch_dir.glob("*.txt"))
+    return {"files": [f.name for f in files]}
+
+
 @router.delete("/api/projects/{project_id}")
-async def delete_project(project_id: str):
-    """删除一个项目"""
+async def delete_project(project_id: str, delete_chapters: bool = False):
+    """删除一个项目，可选删除章节文件"""
     path = _project_path(project_id)
     if path.exists():
         path.unlink()
+    if delete_chapters:
+        ch_dir = _chapters_dir(project_id)
+        if ch_dir.exists():
+            shutil.rmtree(ch_dir)
     return {"ok": True}
 
 

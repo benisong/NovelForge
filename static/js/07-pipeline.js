@@ -1,5 +1,41 @@
 // 07-pipeline.js - Pipeline orchestration (Bot2/Bot3/Bot4 loop, user decisions, retries)
 
+// === Bot2 复制按钮 ===
+function copyBot2Content(){
+  const text=$('contentOutput').textContent;
+  if(!text||text==='等待Bot2创作内容...'){return;}
+  navigator.clipboard.writeText(text).then(()=>{
+    $('bot2CopyStatus').textContent='已复制!';
+    setTimeout(()=>{$('bot2CopyStatus').textContent='';},2000);
+  }).catch(()=>{
+    // fallback
+    const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
+    $('bot2CopyStatus').textContent='已复制!';
+    setTimeout(()=>{$('bot2CopyStatus').textContent='';},2000);
+  });
+}
+
+// 显示/隐藏Bot2工具栏
+function showBot2Toolbar(show){
+  $('bot2Toolbar').style.display=show?'flex':'none';
+}
+
+// 审计通过后保存正式章节文件到服务端
+async function saveChapterFile(content, chapterNum){
+  const projectName=$('projectName').value.trim()||'未命名项目';
+  const pid=currentProjectId||'unknown';
+  try{
+    const r=await fetch('/api/projects/save-chapter',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({project_id:pid, project_name:projectName, chapter_num:chapterNum, content})
+    });
+    const d=await r.json();
+    if(d.ok) addLog('system',`第${chapterNum}章正式版已保存: ${d.filename}`);
+    else addLog('error',`章节文件保存失败`);
+  }catch(e){addLog('error',`章节文件保存失败: ${e.message}`);}
+}
+
 // 用户决策的Promise解析器（供runPipeline内await）
 let _userDecisionResolve=null;
 
@@ -120,7 +156,10 @@ async function runPipeline(startAttempt, prevContent, config, context){
       _userDecisionResolve=null;
 
       if(decision==='accept'){
-        // 用户通过 → 继续Bot4
+        // 用户通过 → 显示复制按钮 + 保存正式章节文件 + 继续Bot4
+        showBot2Toolbar(true);
+        const chNum=S.chapters.length+1;
+        await saveChapterFile(currentContent, chNum);
         setStep('ps-bot3','done');break;
       }else if(decision==='full_rewrite'){
         // 全部重写 → 重置attempt为1，让Bot2从头写（走/api/bot2/write）
@@ -175,7 +214,7 @@ async function _runBot4(content, config, context, attempt){
     setStatus('busy','Bot4生成摘要...');addLog('bot4','开始生成摘要...');
     detailEl.textContent='';
     const abstractModel=getBot4AbstractModel();
-    abstract=await readSSE('/api/bot4/abstract',{condensed,config,abstract_model:abstractModel},(chunk,full)=>{
+    abstract=await readSSE('/api/bot4/abstract',{condensed,content,config,abstract_model:abstractModel},(chunk,full)=>{
       detailEl.textContent=full;detailEl.scrollTop=99999;
     },S.abortCtrl.signal);
     if(!abstract||!abstract.trim())throw new Error('Bot4摘要返回空内容');

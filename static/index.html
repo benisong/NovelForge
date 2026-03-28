@@ -18,7 +18,7 @@
     <div class="dropdown-panel" id="projectMenu">
       <h4>当前项目</h4>
       <div class="dd-row">
-        <div class="fg"><input id="projectName" placeholder="我的小说" value="我的小说" style="font-size:13px;padding:6px 10px"/></div>
+        <div class="fg"><input id="projectName" placeholder="我的小说" value="我的小说1" style="font-size:13px;padding:6px 10px"/></div>
       </div>
       <div class="dd-row">
         <button class="btn-sm" onclick="saveProject()" style="flex:1">&#128190; 保存</button>
@@ -208,6 +208,10 @@
             <button class="eb-btn-retry" id="errContentRetry">&#128260; 重试当前步骤</button>
             <button class="eb-btn-restart" onclick="restartPipeline()">&#9664; 从头开始</button>
           </div>
+        </div>
+        <div class="bot2-toolbar" id="bot2Toolbar" style="display:none;">
+          <button class="bot2-copy-btn" onclick="copyBot2Content()" title="复制正文到剪贴板">&#128203; 复制正文</button>
+          <span class="bot2-copy-status" id="bot2CopyStatus"></span>
         </div>
         <div class="output-area empty" id="contentOutput" style="flex:1;min-height:0;">等待Bot2创作内容...</div>
       </div>

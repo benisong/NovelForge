@@ -79,8 +79,9 @@ class CompressSummaryRequest(BaseModel):
 
 
 class Bot4AbstractRequest(BaseModel):
-    """用廉价模型从缩略版原文生成摘要"""
-    condensed: str
+    """用廉价模型生成摘要，优先用原文，回退用缩略版"""
+    condensed: str = ""
+    content: str = ""  # 原文，优先使用
     config: ProjectConfig
     abstract_model: str = ""  # 摘要模型名，空则用bot4主模型
 

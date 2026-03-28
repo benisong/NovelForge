@@ -131,6 +131,8 @@ async function loadProject(pid){
 
     // 恢复正文
     if(S.currentContent){$('contentOutput').textContent=S.currentContent;$('contentOutput').className='output-area';$('wordCount').textContent=`字数：${S.currentContent.length}`;}
+    // 如果有已完成章节，显示复制按钮
+    showBot2Toolbar(S.chapters.length>0);
     // 恢复总结面板
     rebuildSummaryUI();
     // 恢复日志
@@ -215,24 +217,40 @@ function rebuildLogUI(){
   $('logPanel').scrollTop=99999;
 }
 
-async function deleteProject(pid,name){
-  if(!confirm(`确定删除项目「${name}」？`))return;
-  try{await fetch(`/api/projects/${pid}`,{method:'DELETE'});addLog('system',`已删除项目「${name}」`);
-    if(currentProjectId===pid){currentProjectId=null;localStorage.removeItem('nf_last_project');resetProjectState();}
+async function _deleteProjectWithChapterCheck(pid, name, isCurrent){
+  // 先检查是否有正式章节文件
+  let hasChapters=false;
+  let chapterFiles=[];
+  try{
+    const r=await fetch(`/api/projects/${pid}/chapters`);
+    const d=await r.json();
+    chapterFiles=d.files||[];
+    hasChapters=chapterFiles.length>0;
+  }catch{}
+
+  if(!confirm(`确定删除项目「${name}」？${isCurrent?'所有章节、对话、审核记录将永久丢失。':''}`))return;
+
+  let deleteChapters=false;
+  if(hasChapters){
+    deleteChapters=confirm(`该项目有 ${chapterFiles.length} 个已生成的正式章节文件：\n${chapterFiles.slice(0,5).join('\n')}${chapterFiles.length>5?'\n...等':''}}\n\n是否同时删除这些章节文件？\n（点击"取消"将只删除项目数据，保留章节文件）`);
+  }
+
+  try{
+    await fetch(`/api/projects/${pid}?delete_chapters=${deleteChapters}`,{method:'DELETE'});
+    addLog('system',`已删除项目「${name}」${deleteChapters?'（含章节文件）':''}`);
+    if(isCurrent||currentProjectId===pid){currentProjectId=null;localStorage.removeItem('nf_last_project');resetProjectState();}
     loadProjectList();
   }catch(e){addLog('error',`删除失败: ${e.message}`);}
+}
+
+async function deleteProject(pid,name){
+  await _deleteProjectWithChapterCheck(pid, name, false);
 }
 
 async function deleteCurrentProject(){
   if(!currentProjectId){alert('当前没有已保存的项目');return;}
   const name=$('projectName').value||'当前项目';
-  if(!confirm(`确定删除项目「${name}」？所有章节、对话、审核记录将永久丢失。`))return;
-  try{await fetch(`/api/projects/${currentProjectId}`,{method:'DELETE'});
-    addLog('system',`已删除项目「${name}」`);
-    currentProjectId=null;
-    resetProjectState();
-    loadProjectList();
-  }catch(e){addLog('error',`删除失败: ${e.message}`);}
+  await _deleteProjectWithChapterCheck(currentProjectId, name, true);
 }
 
 function newProject(){
@@ -241,7 +259,10 @@ function newProject(){
   }
   currentProjectId=null;
   resetProjectState();
-  $('projectName').value='我的小说';
+  // 根据已有项目数量自动编号
+  const existingItems=$('projectList').querySelectorAll('.dd-list-item');
+  const nextNum=existingItems.length+1;
+  $('projectName').value='我的小说'+nextNum;
   addLog('system','已新建空项目');
   switchTab('bot1');
 }
@@ -256,6 +277,7 @@ function resetProjectState(){
   $('chapterOutlinePreview').textContent='章节大纲将在讨论中生成';$('chapterOutlinePreview').className='outline-body empty';
   $('btnConfirmOutline').disabled=true;
   $('contentOutput').textContent='等待Bot2创作内容...';$('contentOutput').className='output-area empty';
+  showBot2Toolbar(false);
   $('summaryOutput').textContent='等待Bot4生成记忆总结...';$('summaryOutput').className='output-area empty';
   $('reviewScorePanel').innerHTML='<div style="text-align:center;color:var(--text-muted);padding:30px;font-size:13px;font-style:italic;">尚无审核结果</div>';
   $('logPanel').innerHTML='';$('rhistoryPanel').innerHTML='';

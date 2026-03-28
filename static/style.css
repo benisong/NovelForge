@@ -142,7 +142,7 @@ body { font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif; backgr
 .outline-section-header:hover { background:var(--bg-tertiary); }
 .outline-section-arrow { font-size:10px; transition:transform .2s; }
 .outline-section-arrow.rotated { transform:rotate(90deg); }
-.outline-section-body { overflow-y:auto; transition:max-height .3s ease; }
+.outline-section-body { overflow-y:auto; max-height:50vh; transition:max-height .3s ease; }
 .outline-section-body.collapsed { max-height:0 !important; overflow:hidden; }
 .outline-body { padding:10px 14px; font-size:13px; line-height:1.8; white-space:pre-wrap; word-break:break-word; color:var(--text-secondary); }
 .outline-body.empty { display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-style:italic; min-height:60px; }
@@ -221,6 +221,17 @@ body { font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif; backgr
 }
 
 /* Bot3 工具栏 */
+.bot2-toolbar {
+  display:flex; align-items:center; gap:8px; padding:6px 12px;
+  border-bottom:1px solid var(--border); background:var(--bg-surface); flex-shrink:0;
+}
+.bot2-copy-btn {
+  padding:5px 14px; background:var(--accent-green); color:#1e1e2e; border:none;
+  border-radius:5px; font-size:12px; font-weight:600; cursor:pointer; transition:opacity .2s;
+}
+.bot2-copy-btn:hover { opacity:.85; }
+.bot2-copy-status { font-size:11px; color:var(--accent-green); }
+
 .bot3-toolbar {
   display:flex; align-items:center; gap:8px; padding:6px 12px;
   border-bottom:1px solid var(--border); background:var(--bg-surface); flex-shrink:0;
