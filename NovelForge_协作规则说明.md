@@ -1,336 +1,423 @@
 # NovelForge 四Bot协作规则说明
 
-> 版本 v2.3 | 自动生成于当前代码审查
+> 版本 v3.0 | 更新于 2026-03-28
 
 ---
 
 ## 一、系统架构总览
 
 ```
-用户 ↔ Bot1(策划) → Bot2(创作) ↔ Bot3(审核) → Bot4(记忆) → 下一章循环
-         │                ↑           │
-         │                └───────────┘
-         │                 审核不通过时回环
-         └── 多轮对话交互（唯一的人工介入点1）
-                          审核面板（人工介入点2）
+用户 ↔ Bot1(策划) → Bot2(创作) ↔ Bot3(审核) → Bot4(记忆) → 回到Bot1
+         │                ↑           │              │
+         │                └───────────┘              │
+         │                 审核不通过时回环            │
+         │                                           │
+         ├── 多轮对话交互（人工介入点1）               │
+         │   审核面板编辑（人工介入点2）               │
+         └──────────── 接收Bot4总结，规划下一章 ◄──────┘
 ```
 
-**后端**：FastAPI + httpx（调用 OpenAI 兼容 API）
-**前端**：单文件 HTML（无框架），SSE 流式输出
-**持久化**：JSON 文件（data/ 目录下）
+**后端**：FastAPI（模块化路由） + httpx（调用 OpenAI 兼容 API）
+**前端**：HTML + 独立 CSS/JS 文件（10个JS模块），SSE 流式输出
+**持久化**：JSON 文件（data/ 目录） + 正式章节 TXT 文件（data/chapters/）
 
 ---
 
-## 二、四个 Bot 的职责定义
+## 二、项目文件结构
+
+```
+NovelForge/
+├── app/                      # 后端核心
+│   ├── __init__.py           # FastAPI app 实例
+│   ├── config.py             # 全局配置常量
+│   ├── llm.py                # LLM 调用封装（流式/完整）
+│   ├── models.py             # Pydantic 请求模型
+│   ├── prompts.py            # 所有 Bot 的系统提示词
+│   ├── styles.py             # 文风加载逻辑
+│   └── routes/               # 路由模块
+│       ├── bot1.py           # Bot1 大纲策划
+│       ├── bot2.py           # Bot2 内容创作
+│       ├── bot3.py           # Bot3 质量审核
+│       ├── bot4.py           # Bot4 记忆管理（小总结+大总结）
+│       ├── configs.py        # Bot配置持久化
+│       └── projects.py       # 项目CRUD + 章节文件管理
+├── static/
+│   ├── index.html            # 主页面
+│   ├── style.css             # 全局样式
+│   └── js/
+│       ├── 01-state.js       # 全局状态 S + 工具函数
+│       ├── 02-config.js      # Bot配置管理
+│       ├── 03-chat.js        # Bot1对话 + 上下文构建
+│       ├── 04-review.js      # Bot3审核面板渲染/编辑
+│       ├── 05-bot3prompts.js # Bot3自定义提示词管理
+│       ├── 06-styles.js      # 文风系统UI
+│       ├── 07-pipeline.js    # Pipeline流水线（Bot2→Bot3→Bot4循环）
+│       ├── 08-project.js     # 项目持久化/加载/导出
+│       ├── 09-init.js        # 页面初始化
+│       └── 10-summary.js     # Bot4总结面板UI
+├── data/                     # 数据持久化目录
+│   ├── *.json                # 项目存档文件
+│   └── chapters/             # 正式章节文件
+│       └── {project_id}/     # 每个项目一个子文件夹
+│           └── {项目名}_正式_第N章.txt
+├── preset_styles.json        # 预设文风（8种）
+├── run.py                    # 启动入口
+├── requirements.txt
+├── Dockerfile
+└── docker-compose.yml
+```
+
+---
+
+## 三、四个 Bot 的职责定义
 
 ### Bot1 — 大纲策划师
 - **角色**：资深小说策划编辑
 - **交互方式**：与用户多轮对话（唯一支持多轮对话的 Bot）
-- **核心规则**：**每次回复都必须包含 `<outline>...</outline>` 标签包裹的完整大纲**
-- **大纲内容**：章节主题、核心冲突、场景设计、人物安排、情节节点（起承转合）、情感基调、悬念/伏笔
-- **输入**：用户消息 + 历史对话 + 上下文记忆（可选，由 Bot4 提供）
-- **输出**：对话回复 + 结构化大纲
+- **输出格式**：每次回复包含两个标签：
+  - `<outline>...</outline>` — 总大纲（全局故事规划）
+  - `<chapter_outline>...</chapter_outline>` — 当前章节大纲（本章详细写作计划）
+- **上下文注入**（讨论阶段）：
+  - 开头（高注意力）：角色设定 + 大总结
+  - 中间（低注意力）：各章摘要（abstract）
+  - 末尾（高注意力）：用户消息
+- **面板布局**：左侧聊天区 + 右侧三个折叠区（总大纲/章节大纲/创作设置）
+- **创作设置**：文风选择 + 目标字数（位于Bot1面板，非Bot2）
 
 ### Bot2 — 内容创作师
 - **角色**：才华横溢的小说作家
 - **交互方式**：无用户直接交互，自动执行
-- **核心规则**：根据大纲创作正文，直接输出小说内容，不添加额外说明
-- **动态提示词构建**（`_build_bot2_system`函数）：
-  - **基础提示词**：固定的创作指导
-  - **字数要求**：用户设置的目标字数（默认 800），拼接到系统提示词
-  - **文风要求**：如果用户选择了文风，会拼接文风名称、描述、示例片段，要求 Bot2 "深度学习其语言风格并自然运用"
-- **首次写作**（`/api/bot2/write`）：接收大纲 + 上下文
-- **重写**（`/api/bot2/rewrite`）：接收大纲 + 上一版内容 + 审核修改建议 + 上下文
-- **输出**：流式输出的小说正文
+- **上下文注入**（创作阶段）：
+  - 开头（高注意力）：角色设定 + 大总结
+  - 中间（低注意力）：最近章节缩略原文（condensed）
+  - 末尾（高注意力）：总大纲 + 章节大纲 + 文风 + 字数
+- **动态提示词**：基础提示词 + 字数要求 + 文风要求（名称/描述/示例片段）
+- **接口**：
+  - 首次创作：`POST /api/bot2/write`
+  - 重写：`POST /api/bot2/rewrite`（附带审核建议）
+- **面板功能**：
+  - 审计通过后显示**复制按钮**（一键复制正文到剪贴板）
+  - 审计通过后自动保存正式章节文件到 `data/chapters/`
 
 ### Bot3 — 质量审核师
 - **角色**：严格而专业的文学评审
-- **交互方式**：无直接交互，但**审核结果可被用户编辑**
+- **交互方式**：无直接交互，但审核结果**可被用户完全编辑**
 - **审核维度**（4项，每项 1-10 分）：
   1. **文学性** (literary)：语言表现力、修辞、叙事技巧
   2. **逻辑性** (logic)：情节因果、前后自洽
   3. **风格一致性** (style)：与大纲/上下文风格匹配
-  4. **AI感** (ai_feel)：是否像人类写作（越高越好）
-- **输出格式**：严格 JSON，包含：
-  - `scores`：各维度分数
-  - `average`：平均分（后端重新计算，不信任 LLM 给的值）
-  - `passed`：是否通过（average ≥ 及格分）
-  - `analysis`：2-3 句综合评价
-  - `items`：逐条修改建议（dim/severity/location/problem/suggestion）
-- **及格规则**：平均分 ≥ 用户设定的及格分（默认 8.0）
-- **items 要求**：未通过时至少 5 条，通过时也需给出 low 级别的改进建议
+  4. **人味** (ai_feel)：是否像人类写作（越高越好）
+- **输出格式**：结构化 JSON（scores + items + analysis）
+- **审核面板**：按维度分组折叠显示，有建议的维度标红
+- **用户可编辑**：分数、每条建议的所有字段、可增删条目
+- **支持自定义提示词**：用户可保存多套审核提示词
 
 ### Bot4 — 记忆管理师
 - **角色**：经验丰富的小说编辑
 - **交互方式**：无用户交互，自动执行
-- **核心规则**：对通过审核的章节进行精炼总结，提取关键信息
-- **总结内容**：情节摘要、人物状态、世界观更新、伏笔追踪、时间线
-- **输入**：本章内容 + 之前的故事总结/记忆
-- **输出**：结构化总结文本（作为后续章节的上下文记忆）
+- **双输出（小总结）**：每章生成两份内容
+  - **缩略版原文**（condensed）：Bot4主模型生成，保留关键对话和场景描写（300-800字）
+  - **摘要**（abstract）：Bot4廉价模型生成，结构化信息（人物状态/伏笔/事件节点），基于原文生成
+- **大总结**：每N章（用户可配）或手动触发
+  - 输入：前M章用摘要 + 后N章用缩略原文（用户可调配比）
+  - 输出：全局记忆（世界观/主线/人物状态汇总）
+- **面板布局**：左侧详情展示区（可切换缩略/摘要）+ 右上小总结列表 + 右下大总结列表
 
 ---
 
-## 三、Pipeline 协作流程
+## 四、完整工作流程
 
-### 3.1 正常流程
+### 4.1 单章创作流程
 
 ```
-1. 用户与 Bot1 多轮对话 → 确认大纲
-2. Pipeline 启动（用户点击"确认大纲，开始创作"）
-3. Bot2 创作（第1次，调用 /api/bot2/write）
-4. Bot3 审核
-   ├── 通过（average ≥ 及格分）→ 继续到 Bot4
-   └── 未通过 → 暂停，等待用户决策
-5. Bot4 总结 → 章节完成，记忆存入上下文
-6. 回到 Bot1 对话，开始下一章
+第1章：
+  用户 ↔ Bot1 讨论 → 确认大纲
+    ↓
+  Bot1面板点"确认大纲" → 先持久化总大纲+章节大纲
+    ↓
+  组装Bot2 prompt（大总结 + condensed + 总大纲 + 章节大纲 + 文风 + 字数）
+    ↓
+  Bot2 创作正文（SSE流式）
+    ↓
+  Bot3 审核 → 显示可编辑的审核面板
+    ↓
+  用户三选一决策（见4.2）
+    ↓
+  （通过后）Bot4 生成缩略版原文（主模型）→ Bot4 生成摘要（廉价模型）
+    ↓
+  保存正式章节文件到 data/chapters/
+    ↓
+  提示用户"是否进入Bot1规划下一章"
+    ↓
+  切到Bot1 → 自动显示上一章摘要 → 邀请用户规划下一章
 ```
 
-### 3.2 审核未通过时的用户三选一
+### 4.2 审核后的用户三选一
 
-当 Bot3 评分未达到及格线时，Pipeline **暂停**，用户看到可编辑的审核面板，可以：
+审核完成后（无论通过与否），Pipeline **暂停**，等待用户决策：
 
 | 选项 | 按钮 | 行为 |
 |------|------|------|
-| **发回修改** | 🔄 修改后重写 | 用户可先编辑分数/建议条目，然后 Bot2 根据编辑后的建议重写 |
-| **接受当前版本** | ✓ 接受并继续 | 跳过重写，直接进入 Bot4 总结 |
-| **跳过** | ⏭ 跳过本章 | 跳过 Bot4 总结，直接保存章节（summary 标记为"用户跳过总结"）|
+| **通过** | ✔ 通过 | 显示复制按钮 + 保存正式章节 + 进入 Bot4 总结 |
+| **按建议重写** | 🔄 按建议重写 | Bot2 根据用户编辑后的建议针对性重写，attempt++ |
+| **全部重写** | 🔃 全部重写 | 清空内容，attempt=1，Bot2 从头创作 |
 
-### 3.3 重写循环机制
+### 4.3 重写循环
 
 ```
 while (attempt ≤ max_retries + 1):
     Bot2 创作/重写
     Bot3 审核
-    if 通过: break → Bot4
-    if 未通过:
-        暂停，等待用户决策
-        if 用户选"发回修改": attempt++, continue
-        if 用户选"接受": break → Bot4
-        if 用户选"跳过": return（不经过 Bot4）
+    暂停，等待用户决策
+    if 用户选"通过": → 保存章节 + Bot4
+    if 用户选"按建议重写": attempt++, continue
+    if 用户选"全部重写": attempt=1, continue
 ```
 
-- **最大重写次数**：用户配置（默认 3 次）
-- **达到上限后**：仍然显示决策面板，用户可以选择接受或跳过
-- **用户可编辑的内容**：各维度分数、每条建议的所有字段（维度/严重度/位置/问题/建议）、可增删条目
-
-### 3.4 用户编辑审核 → 发回修改的数据流
+### 4.4 章节间的上下文传递
 
 ```
-1. 前端 readEditedReview() 从 DOM 读取用户编辑后的分数和 items
-2. items 被编译为纯文本格式的 suggestions 字符串：
-   "[文学性/high] 第3段对话: 问题描述 → 建议内容"
-3. suggestions 传入 Bot2RewriteRequest
-4. Bot2 的重写提示词中包含"【审核反馈和修改建议】"段落
-5. Bot2 根据这些反馈进行定向修改
+Bot4总结完成
+  ↓
+Bot1 system prompt 自动注入：大总结 + 各章摘要(abstract)
+  ↓
+Bot1 根据总大纲 + 摘要，与用户讨论下一章
+  ↓
+用户点"确认大纲"
+  ↓
+Bot2 prompt 注入：大总结 + 最近章节 condensed + 总大纲 + 章节大纲
+  ↓
+Bot2 开始创作
 ```
+
+**AI 注意力 U 型分布原则**：
+- 开头（高注意力）→ 全局记忆（大总结）
+- 中间（低注意力）→ 辅助信息（摘要/缩略）
+- 末尾（高注意力）→ 任务指令（大纲/文风/字数）
 
 ---
 
-## 四、数据流与 API 调用链
+## 五、API 接口一览
 
-### 4.1 Bot1 对话
+### Bot1
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/bot1/chat` | 多轮对话（SSE流式），带上下文注入 |
 
-```
-前端 messages[] → POST /api/bot1/chat
-                   → stream_llm(bot1_config, [system + context? + messages])
-                   ← SSE 流式返回
-前端解析 <outline>...</outline> 标签提取大纲
-```
+### Bot2
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/bot2/write` | 首次创作（SSE流式） |
+| POST | `/api/bot2/rewrite` | 按建议重写（SSE流式） |
 
-### 4.2 Bot2 创作
+### Bot3
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/bot3/review` | 审核（非流式，完整JSON返回） |
 
-```
-首次：POST /api/bot2/write  {outline, config, context, style_id, word_count}
-重写：POST /api/bot2/rewrite {outline, content, suggestions, config, context, style_id, word_count}
-     → _build_bot2_system(style_id, word_count) 构建动态系统提示词
-     → stream_llm(bot2_config, messages)
-     ← SSE 流式返回
-```
+### Bot4
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/bot4/summarize` | 小总结-缩略版原文（SSE流式） |
+| POST | `/api/bot4/abstract` | 小总结-摘要（SSE流式，可用廉价模型） |
+| POST | `/api/bot4/big-summarize` | 大总结（SSE流式） |
+| POST | `/api/compress-summary` | 记忆压缩（超过3000字时） |
 
-### 4.3 Bot3 审核
+### 项目管理
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/projects` | 列出所有项目 |
+| GET | `/api/projects/latest` | 获取最近项目ID |
+| GET | `/api/projects/{id}` | 加载项目 |
+| POST | `/api/projects/save` | 保存项目 |
+| DELETE | `/api/projects/{id}?delete_chapters=bool` | 删除项目（可选删除章节文件） |
+| POST | `/api/projects/{id}/export` | 导出TXT |
+| POST | `/api/projects/save-chapter` | 保存正式章节文件 |
+| GET | `/api/projects/{id}/chapters` | 列出正式章节文件 |
 
-```
-POST /api/bot3/review {content, outline, config}
-     → call_llm_full(bot3_config, messages)  ← 注意：非流式，完整返回
-     → 后端解析 JSON，重新计算 average，校验 passed
-     ← 返回结构化 JSON（scores, items, analysis...）
-```
-
-### 4.4 Bot4 总结
-
-```
-POST /api/bot4/summarize {content, config, previous_summary}
-     → stream_llm(bot4_config, messages)
-     ← SSE 流式返回
-```
+### 其他
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/styles` | 获取文风列表 |
+| POST | `/api/styles` | 保存文风 |
+| GET | `/api/styles/{id}` | 获取单个文风 |
+| GET | `/api/models` | 获取可用模型列表 |
+| GET/POST | `/api/configs` | Bot配置持久化 |
+| GET/POST | `/api/bot3-prompts` | Bot3自定义提示词 |
 
 ---
 
-## 五、状态管理与持久化
+## 六、状态管理
 
-### 5.1 前端状态对象 S
+### 6.1 前端全局状态 S
 
 ```javascript
 S = {
-  currentOutline,    // Bot1 输出的当前大纲
-  currentContent,    // Bot2 输出的当前正文
-  currentSummary,    // Bot4 输出的累计记忆
-  chapters[],        // 已完成章节 [{outline, content, summary}]
-  chatHistory[],     // Bot1 对话历史
-  reviews[],         // 审核历史记录
-  logs[],            // 运行日志
-  pipelineState,     // Pipeline 中断状态（用于恢复）
-  abortCtrl,         // AbortController（用于停止）
-  isGenerating,      // 是否正在生成
-  _lastSuggestions   // 最近一次审核建议（传给 Bot2 重写用）
+  chatHistory: [],       // Bot1 对话历史
+  currentOutline: '',    // 总大纲
+  chapterOutline: '',    // 当前章节大纲
+  currentContent: '',    // Bot2 当前正文
+  currentSummary: '',    // 兼容旧逻辑的总结
+  chapters: [],          // 已完成章节 [{outline, chapter_outline, content, summary}]
+  reviews: [],           // 审核历史
+  logs: [],              // 运行日志
+  accumulatedTips: [],   // 累积的写作改进建议（最多10条）
+  smallSummaries: [],    // 小总结 [{chapter, condensed, abstract, time}]
+  bigSummaries: [],      // 大总结 [{fromChapter, toChapter, content, time}]
+  pipelineState: null,   // Pipeline中断状态（用于恢复）
+  abortCtrl: null,       // AbortController
+  isGenerating: false,
+  _lastSuggestions: ''   // 最近审核建议（传给Bot2重写）
 }
 ```
 
-### 5.2 保存机制
+### 6.2 保存机制
 
-- **自动保存**：每 60 秒 + 每个 Bot 步骤完成后
-- **退出保存**：`beforeunload` 事件触发 `navigator.sendBeacon`
-- **保存内容**：chapters, chatHistory, currentOutline/Content/Summary, reviews, logs, pipelineState, activeTab
+| 触发时机 | 方式 |
+|----------|------|
+| AI回复完毕 | `_autoSave()` 静默保存 |
+| 用户操作后 | `_autoSave()` 静默保存 |
+| 章节完成后 | `_autoSaveAfterChapter()` 显式保存 |
+| 每60秒 | 定时器静默保存 |
+| 页面关闭/刷新 | `sendBeacon` 确保数据不丢失 |
+| 启动时 | 从服务端获取最近项目自动加载 |
 
-### 5.3 Pipeline 中断恢复
+### 6.3 正式章节文件
 
-保存的 `pipelineState` 结构：
-```javascript
-{
-  stage: 'bot2' | 'bot3' | 'bot3_decision' | 'bot4',
-  attempt: number,
-  currentContent: string,
-  config: ProjectConfig,  // 注意：包含 API key，恢复时用当前活跃配置替代
-  context: string
-}
-```
+审计通过后，内容写入 `data/chapters/{project_id}/{项目名}_正式_第N章.txt`。
 
-恢复时根据 `stage` 决定从哪个步骤继续。
+删除项目时提示用户是否同时删除这些文件。
+
+### 6.4 Pipeline 中断恢复
+
+项目加载时检测 `pipelineState`，若存在则弹窗提示用户是否从断点继续。
 
 ---
 
-## 六、Bot 配置体系
+## 七、Bot 配置体系
 
-### 6.1 每个 Bot 独立配置
+### 7.1 每个 Bot 独立配置
 
 ```
-Bot1-4 各自拥有独立的：
+Bot1-4 各自拥有：
 - base_url（API 地址）
 - api_key（API 密钥）
 - model（模型名称）
-- temperature（温度，默认 0.7）
-- max_tokens（最大 token，默认 4096）
+- temperature（默认 0.7）
+- max_tokens（默认 4096）
+
+Bot4 额外拥有：
+- abstract_model（摘要模型，复用Bot4的API地址和密钥）
 ```
 
-### 6.2 全局参数
+### 7.2 全局参数
 
-- **及格分** (pass_score)：默认 8.0，Bot3 平均分低于此值判定不通过
-- **最大重写次数** (max_retries)：默认 3
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| 及格分 pass_score | 8.0 | Bot3平均分低于此值判定不通过 |
+| 最大重写 max_retries | 3 | Bot2→Bot3循环上限 |
+| 大总结阈值 big_summary_threshold | 10 | 每N章提示大总结 |
 
-### 6.3 "复制Bot1配置到所有Bot"
+### 7.3 便捷功能
 
-前端提供一键复制功能，将 Bot1 的 base_url/api_key/model 同步到 Bot2-4。
+- "复制Bot1配置到所有Bot"：一键同步 base_url/api_key/model
+- Bot2-4 配置留空时自动使用 Bot1 配置
 
 ---
 
-## 七、文风系统
+## 八、文风系统
 
-### 7.1 工作原理
+### 8.1 工作原理
 
-文风不是独立 Bot，而是 **Bot2 系统提示词的动态扩展**：
-
+文风是 **Bot2 系统提示词的动态扩展**：
 ```
-Bot2 系统提示词 = 基础提示词 + 字数要求 + 文风要求（如果选择了文风）
+Bot2 系统提示词 = 基础提示词 + 字数要求 + 文风要求（名称+描述+示例片段）
 ```
 
-文风要求包含：文风名称、描述、示例片段（要求 Bot2 学习该风格后创作）
+### 8.2 预设文风（8种）
 
-### 7.2 预设文风
+文学(literary)、武侠(wuxia)、玄幻(xuanhuan)、悬疑(suspense)、都市(urban)、言情(romance)、科幻(scifi)、幽默(humor)
 
-8 种内置文风：文学(literary)、武侠(wuxia)、玄幻(xuanhuan)、悬疑(suspense)、都市(urban)、言情(romance)、科幻(scifi)、幽默(humor)
+### 8.3 自定义文风
 
-### 7.3 自定义文风
+支持手动填写（名称+描述+示例片段）和文件导入（.txt/.md/.json）。
 
-用户可通过以下方式导入：
-- 手动填写（名称 + 描述 + 示例片段）
-- 文件导入（.txt/.md/.json）
-- 拖拽导入
+### 8.4 设置位置
 
-### 7.4 文风设置位置
-
-文风选择 + 目标字数控件位于 **Bot2 正文页面顶部**（可折叠工具栏）。
+文风选择 + 目标字数位于 **Bot1 面板右侧"创作设置"折叠区**（默认折叠）。
 
 ---
 
-## 八、错误处理与重试
+## 九、记忆系统详解
 
-### 8.1 各阶段错误处理
+### 9.1 小总结（每章自动）
+
+```
+Bot3通过 → Bot4主模型生成缩略版原文(condensed, 300-800字)
+         → Bot4廉价模型基于原文生成摘要(abstract)
+         → 存入 S.smallSummaries[]
+```
+
+- **condensed 用途**：给 Bot2 创作时衔接上下文（保留叙事细节）
+- **abstract 用途**：给 Bot1 讨论时了解前情（结构化信息）
+
+### 9.2 大总结（每N章或手动）
+
+```
+用户点"生成大总结" → 弹窗配置（前M章用摘要 + 后N章用缩略原文）
+                   → 实时显示预估字数
+                   → 确认后调用 /api/bot4/big-summarize
+                   → 存入 S.bigSummaries[]
+```
+
+### 9.3 上下文构建逻辑
+
+**Bot1 讨论阶段**（`buildBot1Context()`）：
+```
+如有大总结：最新大总结 + 大总结之后的小总结 abstract
+如无大总结：所有小总结的 abstract
+```
+
+**Bot2 创作阶段**（`buildBot2Context()`）：
+```
+如有大总结：最新大总结 + 大总结之后的小总结 condensed
+如无大总结：所有小总结的 condensed
+```
+
+### 9.4 记忆压缩
+
+当总结超过 3000 字时，调用 `/api/compress-summary` 压缩到 800 字以内。
+
+---
+
+## 十、错误处理
 
 | 阶段 | 错误时行为 |
 |------|-----------|
 | Bot2 出错 | 保存 pipelineState(stage='bot2')，显示重试按钮 |
 | Bot3 出错 | 保存 pipelineState(stage='bot3')，显示重试按钮 |
-| Bot3 JSON 解析失败 | 返回全0分 + retry_hint，前端可重试 |
+| Bot3 JSON 解析失败 | 多级降级解析，最终返回全0分 + 原始回复预览 |
 | Bot4 出错 | 保存 pipelineState(stage='bot4')，显示重试按钮 |
 
-### 8.2 API 级别错误
-
-- 超时：3 分钟硬限制
-- 连接失败：直接报错，不自动重试
-- 空内容返回：视为错误
-- HTTP 非200：返回错误信息
-
-### 8.3 用户可随时停止
-
-Pipeline 运行时显示"停止"按钮，通过 AbortController 取消所有进行中的请求。
+- API 超时：3 分钟硬限制
+- 用户可随时点"停止"按钮终止 Pipeline
+- Pipeline 中断后可从断点恢复
 
 ---
 
-## 九、当前存在的问题与待确认项
-
-### 9.1 Bot3 审核未接收文风信息
-
-**现状**：Bot3 审核时只接收 content + outline + config，**不接收 style_id**。
-**影响**：Bot3 的"风格一致性"维度审核时，不知道用户选择了什么文风，只能根据大纲推测目标风格。
-**建议**：考虑将选中的文风信息（名称+描述）传给 Bot3，使风格审核更精准。
-
-### 9.2 Bot4 总结未接收大纲
-
-**现状**：Bot4 只接收 content + previous_summary，**不接收 outline**。
-**影响**：Bot4 无法对比大纲中的伏笔设置与实际内容，伏笔追踪可能不完整。
-**建议**：考虑将当前章大纲传给 Bot4 辅助总结。
-
-### 9.3 Bot1 上下文仅为 summary
-
-**现状**：Bot1 的上下文记忆来自 `S.currentSummary`（Bot4 的总结）。
-**可选增强**：可以同时传入前几章的大纲摘要，帮助 Bot1 更好地规划后续章节。
-
-### 9.4 审核通过后的建议未利用
-
-**现状**：Bot3 审核通过（passed=true）时，也会产生 low 级别的改进建议，但这些建议没有传给 Bot2 用于后续章节的创作。
-**可选增强**：积累审核建议作为"写作注意事项"传给后续的 Bot2 调用。
-
-### 9.5 多章间的文风一致性
-
-**现状**：每次 Bot2 创作都独立接收文风示例。但 LLM 没有看到前几章的实际文本来学习已建立的风格。
-**可选增强**：将上一章的最后 N 段作为"风格参考"传给 Bot2，增强跨章节风格连贯性。
-
-### 9.6 Bot2 重写时 context 传递
-
-**现状**：重写时 context 字段仍然传递之前的 summary，这是正确的。但如果 summary 非常长（多章累积），可能消耗过多 token。
-**可选增强**：对超长 context 进行截断或二次总结。
-
----
-
-## 十、技术参数速查
+## 十一、技术参数速查
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| API 超时 | 180s (3分钟) | 所有 LLM 调用 |
+| API 超时 | 180s | 所有 LLM 调用 |
 | 默认温度 | 0.7 | 所有 Bot |
 | 默认 max_tokens | 4096 | 所有 Bot |
 | 及格分 | 8.0 | Bot3 平均分 |
 | 最大重写 | 3 次 | Bot2→Bot3 循环 |
-| 目标字数 | 800 中文字 | Bot2 创作 |
+| 目标字数 | 800 字 | Bot2 创作 |
+| 缩略原文字数 | 300-800 字 | Bot4 condensed |
 | 自动保存 | 60s 间隔 | + 每步骤完成后 |
-| Bot3 items | 未通过≥5条，通过≥3条(low) | 修改建议 |
+| 大总结阈值 | 10 章 | 用户可配置 |
+| 记忆压缩阈值 | 3000 字 | 超过后自动压缩 |
+| 累积建议上限 | 10 条 | 写作改进tips |
+| 项目命名 | 我的小说N | 自动编号 |
