@@ -20,6 +20,11 @@ const S = {
 const $ = id => document.getElementById(id);
 const now = () => { const d=new Date(); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`; };
 
+function _syncMenuState(){
+  const anyOpen=Array.from(document.querySelectorAll('.dropdown-panel')).some(p=>p.classList.contains('show'));
+  document.body.classList.toggle('menu-open', anyOpen);
+}
+
 function addLog(bot,msg){
   const t=now();
   S.logs.push({bot,msg,time:t});
@@ -27,28 +32,54 @@ function addLog(bot,msg){
   const e=document.createElement('div');e.className=`log-entry ${bot}`;e.innerHTML=`<span class="lt">[${t}]</span><span class="lb">[${bot.toUpperCase()}]</span><span>${msg}</span>`;$('logPanel').appendChild(e);$('logPanel').scrollTop=99999;
 }
 function setStatus(cls,text){$('statusDot').className='sd '+cls;$('statusLabel').textContent=text;$('statusText').textContent=text;}
-function switchTab(name){document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));$('tab-'+name).classList.add('active');$('pane-'+name).classList.add('active');}
-function switchRight(name){document.querySelectorAll('.right-tab').forEach(t=>t.classList.remove('active'));$('rt-'+name).classList.add('active');$('logPanel').style.display=name==='log'?'':'none';$('rhistoryPanel').style.display=name==='rhistory'?'':'none';}
+function switchTab(name){
+  const tab=$('tab-'+name), pane=$('pane-'+name);
+  if(!tab||!pane){
+    if(name!=='bot1') return switchTab('bot1');
+    return;
+  }
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('[data-tab-name]').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.dropdown-panel').forEach(p=>p.classList.remove('show'));
+  document.querySelectorAll('.menu-btn').forEach(b=>b.classList.remove('open'));
+  _syncMenuState();
+  tab.classList.add('active');
+  document.querySelectorAll(`[data-tab-name="${name}"]`).forEach(t=>t.classList.add('active'));
+  pane.classList.add('active');
+}
+function switchRight(name){
+  const tab=$('rt-'+name), log=$('logPanel'), history=$('rhistoryPanel');
+  if(!tab||!log||!history) return;
+  document.querySelectorAll('.right-tab').forEach(t=>t.classList.remove('active'));
+  tab.classList.add('active');
+  log.style.display=name==='log'?'':'none';
+  history.style.display=name==='rhistory'?'':'none';
+}
 function setStep(id,cls){$(id).className='p-step '+cls;}
 function hideAllErrors(){['errContent','errReview','errSummary'].forEach(id=>$(id).classList.remove('show'));}
 
 // 顶部下拉菜单
 function toggleMenu(id){
   const panel=$(id);
+  if(!panel) return;
   const isOpen=panel.classList.contains('show');
   // 关闭所有菜单
   document.querySelectorAll('.dropdown-panel').forEach(p=>p.classList.remove('show'));
   document.querySelectorAll('.menu-btn').forEach(b=>b.classList.remove('open'));
   if(!isOpen){
     panel.classList.add('show');
-    panel.previousElementSibling.classList.add('open');
+    const trigger=document.querySelector(`.menu-btn[data-menu-target="${id}"]`) || panel.previousElementSibling;
+    if(trigger && trigger.classList) trigger.classList.add('open');
   }
+  _syncMenuState();
 }
 // 点击外部关闭菜单
 document.addEventListener('click',e=>{
   if(!e.target.closest('.menu-btn')&&!e.target.closest('.dropdown-panel')){
     document.querySelectorAll('.dropdown-panel').forEach(p=>p.classList.remove('show'));
     document.querySelectorAll('.menu-btn').forEach(b=>b.classList.remove('open'));
+    _syncMenuState();
   }
 });
 

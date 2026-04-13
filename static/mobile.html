@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#d97046">
+<title>NovelForge - 移动版</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/mobile.css">
+</head>
+<body class="mobile-ui">
+<div class="mobile-shell">
+  <header class="mobile-topbar">
+    <div class="mobile-topline">NovelForge Mobile</div>
+    <div class="mobile-topbar-main">
+      <div class="mobile-title-block">
+        <input id="projectName" class="mobile-project-input" placeholder="我的小说" value="我的小说1">
+        <div class="mobile-topbar-meta">
+          <span class="mobile-state-pill"><span class="sd ready" id="statusDot"></span><span id="statusLabel">就绪</span></span>
+          <span id="statusText">就绪</span>
+        </div>
+      </div>
+      <div class="mobile-topbar-actions">
+        <button class="menu-btn mobile-header-btn" data-menu-target="projectMenu" onclick="toggleMenu('projectMenu')">项目<span id="projectMenuLabel" class="mobile-btn-label"></span></button>
+        <button class="menu-btn mobile-header-btn" data-menu-target="configMenu" onclick="toggleMenu('configMenu')">设置<span id="configMenuLabel" class="mobile-btn-label"></span></button>
+        <button class="menu-btn mobile-icon-btn" onclick="toggleTheme()" id="themeToggleBtn" title="切换白天/夜间模式">◐</button>
+      </div>
+    </div>
+    <div class="mobile-info-row">
+      <span id="chapterInfo">新章节</span>
+      <span id="wordCount"></span>
+      <span id="retryInfo"></span>
+    </div>
+    <div class="pipeline-bar" id="pipelineBar">
+      <div class="p-step" id="ps-bot1">灵感</div><span class="p-arrow">→</span>
+      <div class="p-step" id="ps-bot2">成稿</div><span class="p-arrow">→</span>
+      <div class="p-step" id="ps-bot3">审稿</div><span class="p-arrow">→</span>
+      <div class="p-step" id="ps-bot4">记忆</div>
+      <span class="mobile-grow"></span>
+      <button class="btn-outline" id="btnStop" style="display:none;padding:4px 12px;font-size:11px" onclick="stopAll()">停止</button>
+    </div>
+  </header>
+
+  <section class="mobile-scene-switch">
+    <button class="tab mobile-scene-card active" id="tab-bot1" data-tab-name="bot1" onclick="switchTab('bot1')">
+      <span class="mobile-scene-kicker">Step 1</span>
+      <strong>灵感</strong>
+      <span>和 Bot1 先把这一章聊清楚</span>
+    </button>
+    <button class="tab mobile-scene-card" id="tab-content" data-tab-name="content" onclick="switchTab('content')">
+      <span class="mobile-scene-kicker">Step 2</span>
+      <strong>正文</strong>
+      <span>阅读成稿，确认节奏与文气</span>
+    </button>
+    <button class="tab mobile-scene-card" id="tab-review" data-tab-name="review" onclick="switchTab('review')">
+      <span class="mobile-scene-kicker">Step 3</span>
+      <strong>审稿</strong>
+      <span>快速判断要不要重写</span>
+    </button>
+    <button class="tab mobile-scene-card" id="tab-summary" data-tab-name="summary" onclick="switchTab('summary')">
+      <span class="mobile-scene-kicker">Step 4</span>
+      <strong>档案</strong>
+      <span>看章节、总结和项目记录</span>
+    </button>
+  </section>
+
+  <div class="dropdown-panel mobile-sheet" id="projectMenu">
+    <div class="mobile-sheet-head">
+      <div>
+        <h4>项目</h4>
+        <p>保存、切换和导出内容都放在这里。</p>
+      </div>
+      <button class="btn-sm" onclick="toggleMenu('projectMenu')">关闭</button>
+    </div>
+    <div class="mobile-sheet-body">
+      <div class="mobile-action-grid">
+        <button class="btn-sm" onclick="saveProject()">保存项目</button>
+        <button class="btn-sm" onclick="exportProject()">导出 TXT</button>
+        <button class="btn-sm" onclick="newProject()">新建项目</button>
+        <button class="btn-sm mobile-danger-btn" onclick="deleteCurrentProject()">删除项目</button>
+      </div>
+      <div class="mobile-sheet-section">
+        <h4>已保存项目</h4>
+        <div id="projectList"><div class="mobile-empty-note">暂无已保存项目</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dropdown-panel mobile-sheet" id="configMenu">
+    <div class="mobile-sheet-head">
+      <div>
+        <h4>设置</h4>
+        <p>默认只保留必要选项，高级模型连接收在下面。</p>
+      </div>
+      <button class="btn-sm" onclick="toggleMenu('configMenu')">关闭</button>
+    </div>
+    <div class="mobile-sheet-body">
+      <div class="mobile-sheet-section">
+        <h4>配置方案</h4>
+        <div class="dd-row">
+          <div class="fg">
+            <label>方案名称</label>
+            <input id="configProfileName" placeholder="默认配置" value="默认配置">
+          </div>
+          <button class="btn-sm" onclick="saveConfigProfile()">保存</button>
+        </div>
+        <div id="configProfileList"><div class="mobile-empty-note">暂无配置方案</div></div>
+      </div>
+
+      <div class="mobile-quick-settings">
+        <div class="fg"><label>及格分</label><input type="number" id="passScore" value="8" min="1" max="10" step="0.5"></div>
+        <div class="fg"><label>最大重写</label><input type="number" id="maxRetries" value="3" min="1" max="10"></div>
+        <div class="fg"><label>大总结阈值</label><input type="number" id="bigSummaryThreshold" value="10" min="1" max="50"></div>
+      </div>
+
+      <details class="mobile-config-group" open>
+        <summary>Bot1 规划配置</summary>
+        <div class="mobile-config-body">
+          <div class="fg"><label>API 地址</label><input id="bot1_url" placeholder="https://api.example.com/v1"></div>
+          <div class="fg"><label>API 密钥</label><input type="password" id="bot1_key" placeholder="sk-..."></div>
+          <div class="model-row"><div class="fg"><label>模型</label><select id="bot1_model"><option value="">先获取列表</option></select></div><button class="btn-sm" onclick="fetchModels('bot1')">获取</button></div>
+        </div>
+      </details>
+
+      <details class="mobile-config-group">
+        <summary>高级模型连接</summary>
+        <div class="mobile-config-body">
+          <div class="mobile-subgroup">
+            <h5>Bot2 正文</h5>
+            <div class="fg"><label>API 地址</label><input id="bot2_url" placeholder="留空则复用 Bot1"></div>
+            <div class="fg"><label>API 密钥</label><input type="password" id="bot2_key" placeholder="留空则复用 Bot1"></div>
+            <div class="model-row"><div class="fg"><label>模型</label><select id="bot2_model"><option value="">留空则复用 Bot1</option></select></div><button class="btn-sm" onclick="fetchModels('bot2')">获取</button></div>
+          </div>
+          <div class="mobile-subgroup">
+            <h5>Bot3 审稿</h5>
+            <div class="fg"><label>API 地址</label><input id="bot3_url" placeholder="留空则复用 Bot1"></div>
+            <div class="fg"><label>API 密钥</label><input type="password" id="bot3_key" placeholder="留空则复用 Bot1"></div>
+            <div class="model-row"><div class="fg"><label>模型</label><select id="bot3_model"><option value="">留空则复用 Bot1</option></select></div><button class="btn-sm" onclick="fetchModels('bot3')">获取</button></div>
+          </div>
+          <div class="mobile-subgroup">
+            <h5>Bot4 记忆</h5>
+            <div class="fg"><label>API 地址</label><input id="bot4_url" placeholder="留空则复用 Bot1"></div>
+            <div class="fg"><label>API 密钥</label><input type="password" id="bot4_key" placeholder="留空则复用 Bot1"></div>
+            <div class="model-row"><div class="fg"><label>模型</label><select id="bot4_model"><option value="">留空则复用 Bot1</option></select></div><button class="btn-sm" onclick="fetchModels('bot4')">获取</button></div>
+            <div class="model-row"><div class="fg"><label>摘要模型</label><select id="bot4_abstract_model"><option value="">留空则复用 Bot4</option></select></div><button class="btn-sm" onclick="fetchModels('bot4_abstract')">获取</button></div>
+          </div>
+          <button class="btn-copy" onclick="copyBot1ToAll()">把 Bot1 配置复制给其他 Bot</button>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <main class="tab-body mobile-main">
+    <section class="pane active" id="pane-bot1">
+      <div class="mobile-pane-scroll">
+        <section class="mobile-hero-card">
+          <div class="mobile-hero-copy">
+            <span class="mobile-kicker-chip">第一步</span>
+            <h1>先把这一章聊清楚</h1>
+            <p>手机上不要三栏，也不要堆满配置。你只需要先对话、看本章大纲、确认后开始创作。</p>
+          </div>
+          <div class="mobile-hero-actions">
+            <button class="btn-primary" id="btnConfirmOutline" onclick="confirmOutline()" disabled>确认大纲并开始创作</button>
+            <button class="btn-outline" id="btnNewChat" onclick="newChat()">重新开聊</button>
+          </div>
+        </section>
+
+        <section class="mobile-card mobile-chat-card">
+          <div class="chat-header">
+            <div class="mobile-section-head compact">
+              <div>
+                <h2>灵感对话</h2>
+                <p>把剧情、角色、冲突直接说给 Bot1。</p>
+              </div>
+              <button class="btn-sm" onclick="clearChat()" title="清空全部对话">清空</button>
+            </div>
+          </div>
+          <div class="chat-messages" id="chatMessages">
+            <div class="chat-welcome mobile-empty-state">
+              👋 从一句想法开始就够了。<br>Bot1 会边聊边帮你收束这一章。
+            </div>
+          </div>
+          <div class="chat-input-bar">
+            <textarea id="chatInput" rows="2" placeholder="比如：这一章让女主第一次发现真相，但不要立刻摊牌。" onkeydown="chatKeydown(event)"></textarea>
+            <button class="btn-send" id="btnSend" onclick="sendChat()">发送</button>
+          </div>
+        </section>
+
+        <details class="mobile-reveal-card" open>
+          <summary>
+            <div>
+              <span class="mobile-reveal-kicker">Tap To Reveal</span>
+              <strong>本章大纲</strong>
+            </div>
+            <span class="badge-live" id="outlineLive" style="display:none;">● 更新中</span>
+          </summary>
+          <div class="mobile-reveal-body">
+            <div class="outline-body empty" id="chapterOutlinePreview">章节大纲将在讨论中生成</div>
+          </div>
+        </details>
+
+        <details class="mobile-reveal-card">
+          <summary>
+            <div>
+              <span class="mobile-reveal-kicker">Tap To Reveal</span>
+              <strong>总大纲</strong>
+            </div>
+            <span class="mobile-reveal-arrow" id="globalOutlineArrow">+</span>
+          </summary>
+          <div class="mobile-reveal-body outline-section-body" id="globalOutlineBody">
+            <div class="outline-body empty" id="outlinePreview">总大纲将在对话过程中自动生成和更新</div>
+          </div>
+        </details>
+
+        <details class="mobile-reveal-card">
+          <summary>
+            <div>
+              <span class="mobile-reveal-kicker">Tap To Reveal</span>
+              <strong>字数与文风</strong>
+            </div>
+            <span class="mobile-reveal-arrow" id="settingsArrow">+</span>
+          </summary>
+          <div class="mobile-reveal-body outline-section-body" id="bot1SettingsBody">
+            <div class="mobile-inline-settings">
+              <div class="bot1-wc-section">
+                <label class="mobile-field-label" for="wordCountInput">目标字数</label>
+                <div class="word-count-row">
+                  <input type="number" id="wordCountInput" value="800" min="200" max="5000" step="100">
+                  <label>字</label>
+                  <div class="wc-presets">
+                    <span class="wc-preset" onclick="$('wordCountInput').value=500">500</span>
+                    <span class="wc-preset" onclick="$('wordCountInput').value=800">800</span>
+                    <span class="wc-preset" onclick="$('wordCountInput').value=1500">1500</span>
+                    <span class="wc-preset" onclick="$('wordCountInput').value=3000">3000</span>
+                  </div>
+                </div>
+              </div>
+              <div class="mobile-style-wrap">
+                <div class="style-toolbar">
+                  <h4>文风</h4>
+                  <button class="btn-import-style" onclick="openStyleModal()">导入</button>
+                </div>
+                <div class="style-grid" id="styleGrid">
+                  <div class="mobile-empty-note" style="grid-column:1/-1">加载中...</div>
+                </div>
+                <div class="style-preview" id="stylePreview"></div>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <span id="chapterOutlineArrow" hidden></span>
+      </div>
+    </section>
+
+    <section class="pane" id="pane-content">
+      <div class="mobile-pane-scroll">
+        <section class="mobile-card mobile-reading-card">
+          <div class="mobile-section-head">
+            <div>
+              <h2>正文</h2>
+              <p>生成后直接在这里阅读、复制，再去审稿。</p>
+            </div>
+            <button class="btn-outline mobile-jump-btn" onclick="switchTab('review')">去审稿</button>
+          </div>
+          <div class="error-banner" id="errContent">
+            <div class="eb-title">⚠ 创作出错</div>
+            <div class="eb-msg" id="errContentMsg"></div>
+            <div class="eb-actions">
+              <button class="eb-btn-retry" id="errContentRetry">重试当前步骤</button>
+              <button class="eb-btn-restart" onclick="restartPipeline()">从头开始</button>
+            </div>
+          </div>
+          <div class="bot2-toolbar" id="bot2Toolbar" style="display:none;">
+            <button class="bot2-copy-btn" onclick="copyBot2Content()" title="复制正文到剪贴板">复制正文</button>
+            <span class="bot2-copy-status" id="bot2CopyStatus"></span>
+          </div>
+          <div class="output-area empty mobile-output" id="contentOutput">等待 Bot2 创作内容...</div>
+        </section>
+      </div>
+    </section>
+
+    <section class="pane" id="pane-review">
+      <div class="mobile-pane-scroll">
+        <section class="mobile-card">
+          <div class="mobile-section-head">
+            <div>
+              <h2>审稿</h2>
+              <p>这一步只做判断：通过、按建议重写、或者整章重来。</p>
+            </div>
+            <button class="btn-sm" onclick="manualReReview()" id="btnReReview">重新审核</button>
+          </div>
+          <div class="error-banner" id="errReview">
+            <div class="eb-title">⚠ 审核出错</div>
+            <div class="eb-msg" id="errReviewMsg"></div>
+            <div class="eb-actions">
+              <button class="eb-btn-retry" id="errReviewRetry">重试审核</button>
+              <button class="eb-btn-restart" onclick="restartPipeline()">从头开始</button>
+            </div>
+          </div>
+          <div class="bot3-toolbar" id="bot3Toolbar">
+            <button class="bot3-tb-btn" onclick="openBot3PromptModal()">审核提示词</button>
+            <span class="bot3-prompt-label" id="bot3PromptLabel"></span>
+          </div>
+          <div class="review-pane-inner mobile-review-pane">
+            <div class="review-full">
+              <div class="rsb" id="reviewScorePanel">
+                <div class="mobile-empty-state">暂无审核结果</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="pane" id="pane-summary">
+      <div class="mobile-pane-scroll">
+        <section class="mobile-card">
+          <div class="mobile-section-head">
+            <div>
+              <h2>记忆档案</h2>
+              <p>回顾章节、总结、日志都收在这里，不打断创作主流程。</p>
+            </div>
+            <button class="btn-outline mobile-jump-btn" onclick="switchTab('bot1')">继续创作</button>
+          </div>
+
+          <div class="error-banner" id="errSummary">
+            <div class="eb-title">⚠ 总结出错</div>
+            <div class="eb-msg" id="errSummaryMsg"></div>
+            <div class="eb-actions">
+              <button class="eb-btn-retry" id="errSummaryRetry">重试总结</button>
+              <button class="eb-btn-restart" onclick="restartPipeline()">从头开始</button>
+            </div>
+          </div>
+
+          <details class="mobile-reveal-card" open>
+            <summary>
+              <div>
+                <span class="mobile-reveal-kicker">Tap To Reveal</span>
+                <strong>本章记忆</strong>
+              </div>
+              <span class="mobile-reveal-arrow">+</span>
+            </summary>
+            <div class="mobile-reveal-body">
+              <div class="summary-layout mobile-summary-layout">
+                <div class="summary-detail">
+                  <div class="summary-detail-toolbar">
+                    <button class="summary-view-btn active" id="btnShowCondensed" onclick="toggleSummaryView('condensed')">缩略原文</button>
+                    <button class="summary-view-btn" id="btnShowAbstract" onclick="toggleSummaryView('abstract')">摘要</button>
+                    <span class="summary-detail-title" id="summaryDetailTitle"></span>
+                  </div>
+                  <div class="summary-detail-content" id="summaryDetailContent">
+                    <div class="mobile-empty-state">先完成一章，再回来查看记忆。</div>
+                  </div>
+                  <div id="summaryOutput" hidden></div>
+                </div>
+                <div class="summary-sidebar">
+                  <div class="summary-list-section">
+                    <div class="summary-list-header">小总结</div>
+                    <div class="summary-list" id="smallSummaryList"><div class="mobile-empty-note">暂无</div></div>
+                  </div>
+                  <div class="summary-list-section">
+                    <div class="summary-list-header">
+                      <span>大总结 <span class="summary-badge" id="bigSummaryBadge" style="display:none;"></span></span>
+                      <button class="btn-sm" onclick="triggerBigSummary()" id="btnBigSummary">生成</button>
+                    </div>
+                    <div id="bigSummaryConfirm" style="display:none;"></div>
+                    <div class="summary-list" id="bigSummaryList"><div class="mobile-empty-note">暂无</div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <details class="mobile-reveal-card">
+            <summary>
+              <div>
+                <span class="mobile-reveal-kicker">Tap To Reveal</span>
+                <strong>章节档案</strong>
+              </div>
+              <span class="mobile-reveal-arrow">+</span>
+            </summary>
+            <div class="mobile-reveal-body">
+              <div id="chapterList"><div class="mobile-empty-note">暂无已完成章节</div></div>
+            </div>
+          </details>
+
+          <details class="mobile-reveal-card">
+            <summary>
+              <div>
+                <span class="mobile-reveal-kicker">Tap To Reveal</span>
+                <strong>项目记录</strong>
+              </div>
+              <span class="mobile-reveal-arrow">+</span>
+            </summary>
+            <div class="mobile-reveal-body">
+              <div class="right-tabs">
+                <div class="right-tab active" onclick="switchRight('log')" id="rt-log">日志</div>
+                <div class="right-tab" onclick="switchRight('rhistory')" id="rt-rhistory">审核历史</div>
+              </div>
+              <div class="right-body mobile-right-body">
+                <div id="logPanel"><div class="log-entry system"><span class="lt">[系统]</span><span>欢迎使用 NovelForge 移动版</span></div></div>
+                <div id="rhistoryPanel" style="display:none"></div>
+              </div>
+            </div>
+          </details>
+        </section>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="style-modal-overlay" id="styleModalOverlay" onclick="if(event.target===this)closeStyleModal()">
+  <div class="style-modal">
+    <h3 id="styleModalTitle">导入文风</h3>
+    <input type="hidden" id="smEditId">
+    <div class="sm-field">
+      <label>文风名称</label>
+      <input type="text" id="smName" placeholder="如：赛博朋克、古典散文、第一人称独白">
+    </div>
+    <div class="sm-field">
+      <label>风格描述</label>
+      <input type="text" id="smDesc" placeholder="一句话说明这种文风的气质和特点">
+    </div>
+    <div class="sm-field">
+      <label>示例片段</label>
+      <textarea id="smExample" placeholder="粘贴最能代表这种文风的一段文字，Bot2 会据此学习语感和叙事方式。"></textarea>
+      <div class="sm-hint">示例越准确，模仿效果越稳定。</div>
+    </div>
+    <div class="sm-or-divider">或者从文件导入</div>
+    <div class="sm-file-drop" id="smFileDrop" onclick="$('smFileInput').click()">
+      点击选择 / 拖拽文件到此处<br>
+      <span style="font-size:10px;color:var(--text-muted)">支持 .txt .md .json 文件</span>
+    </div>
+    <input type="file" id="smFileInput" accept=".txt,.md,.json" style="display:none" onchange="handleStyleFileImport(this)">
+    <div class="sm-actions">
+      <button class="sm-btn-cancel" onclick="closeStyleModal()">取消</button>
+      <button class="sm-btn-save" onclick="saveStyleFromModal()">保存文风</button>
+    </div>
+  </div>
+</div>
+
+<div class="style-modal-overlay" id="bot3PromptOverlay" onclick="if(event.target===this)closeBot3PromptModal()">
+  <div class="style-modal">
+    <h3>Bot3 审核提示词</h3>
+    <div style="margin-bottom:12px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+        <label style="font-size:11px;color:var(--text-muted);font-weight:600;">已保存的提示词</label>
+        <button class="btn-import-style" onclick="newBot3Prompt()">+ 新建</button>
+      </div>
+      <div id="bot3PromptList" style="max-height:120px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;background:var(--bg-primary);"></div>
+    </div>
+    <div class="sm-field">
+      <label id="bot3PromptEditLabel">提示词名称</label>
+      <input type="text" id="b3pName" placeholder="例如：严格文学审核">
+      <input type="hidden" id="b3pEditId">
+    </div>
+    <div class="sm-field">
+      <label>提示词内容</label>
+      <textarea id="b3pContent" style="min-height:260px;font-size:11px;line-height:1.5;" placeholder="输入 Bot3 的系统提示词..."></textarea>
+    </div>
+    <div class="sm-actions">
+      <button class="sm-btn-cancel" onclick="closeBot3PromptModal()">关闭</button>
+      <button class="sm-btn-save" id="b3pDeleteBtn" onclick="deleteBot3Prompt()" style="background:var(--accent-red);display:none;">删除</button>
+      <button class="sm-btn-save" onclick="saveBot3Prompt()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/01-state.js"></script>
+<script src="/static/js/02-config.js"></script>
+<script src="/static/js/03-chat.js"></script>
+<script src="/static/js/04-review.js"></script>
+<script src="/static/js/05-bot3prompts.js"></script>
+<script src="/static/js/06-styles.js"></script>
+<script src="/static/js/07-pipeline.js"></script>
+<script src="/static/js/10-summary.js"></script>
+<script src="/static/js/08-project.js"></script>
+<script src="/static/js/09-init.js"></script>
+</body>
+</html>

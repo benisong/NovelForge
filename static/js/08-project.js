@@ -1,5 +1,30 @@
 // 08-project.js - Project persistence, save/load, import/export
 
+// 防抖函数用于自动保存
+function debounce(func, wait) {
+  let timeout;
+  return function(...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => {
+      func.apply(this, args);
+    }, wait);
+  };
+}
+
+// 绑定输入框自动保存
+document.addEventListener('DOMContentLoaded', () => {
+  const debouncedSave = debounce(() => {
+    if (S.chatHistory.length > 0 || S.chapters.length > 0) {
+      saveProject(true);
+    }
+  }, 3000);
+
+  // 监听所有textarea和input的输入事件
+  document.querySelectorAll('textarea, input[type="text"]').forEach(el => {
+    el.addEventListener('input', debouncedSave);
+  });
+});
+
 // ============================================================
 // 项目持久化
 // ============================================================
@@ -278,7 +303,8 @@ function resetProjectState(){
   $('btnConfirmOutline').disabled=true;
   $('contentOutput').textContent='等待Bot2创作内容...';$('contentOutput').className='output-area empty';
   showBot2Toolbar(false);
-  $('summaryOutput').textContent='等待Bot4生成记忆总结...';$('summaryOutput').className='output-area empty';
+  if($('summaryOutput')){$('summaryOutput').textContent='等待Bot4生成记忆总结...';$('summaryOutput').className='output-area empty';}
+  if($('summaryDetailContent')) $('summaryDetailContent').innerHTML='<div style="text-align:center;color:var(--text-muted);padding:40px;font-size:13px;font-style:italic;">点击列表查看总结详情</div>';
   $('reviewScorePanel').innerHTML='<div style="text-align:center;color:var(--text-muted);padding:30px;font-size:13px;font-style:italic;">尚无审核结果</div>';
   $('logPanel').innerHTML='';$('rhistoryPanel').innerHTML='';
   $('wordCount').textContent='';$('retryInfo').textContent='';$('chapterInfo').textContent='新章节';

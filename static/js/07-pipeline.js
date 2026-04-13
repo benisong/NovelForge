@@ -323,8 +323,8 @@ async function retryBot4(ps){
 }
 
 // 章节
-function updateChapterList(){const el=$('chapterList');el.innerHTML='';S.chapters.forEach((ch,i)=>{const d=document.createElement('div');d.className='chapter-item';d.textContent=`${i+1}. 第${i+1}章 (${ch.content.length}字)`;d.onclick=()=>viewChapter(i);el.appendChild(d);});}
-function viewChapter(i){const ch=S.chapters[i];$('outlinePreview').textContent=ch.outline;$('outlinePreview').className='outline-body';$('contentOutput').textContent=ch.content;$('contentOutput').className='output-area';$('summaryOutput').textContent=ch.summary;$('summaryOutput').className='output-area';switchTab('content');$('chapterInfo').textContent=`查看：第${i+1}章`;}
+function updateChapterList(){const el=$('chapterList');el.innerHTML='';if(S.chapters.length===0){el.innerHTML='<div style="font-size:12px;color:var(--text-muted);padding:6px">暂无已完成章节</div>';return;}S.chapters.forEach((ch,i)=>{const d=document.createElement('div');d.className='chapter-item';d.textContent=`${i+1}. 第${i+1}章 (${ch.content.length}字)`;d.onclick=()=>viewChapter(i);el.appendChild(d);});}
+function viewChapter(i){const ch=S.chapters[i];$('outlinePreview').textContent=ch.outline;$('outlinePreview').className='outline-body';$('contentOutput').textContent=ch.content;$('contentOutput').className='output-area';const detailEl=$('summaryDetailContent');if(detailEl){const summaryItem=(S.smallSummaries||[]).find(s=>s.chapter===i+1);if(summaryItem){showSummaryDetail('small',(S.smallSummaries||[]).indexOf(summaryItem));}else{detailEl.textContent=ch.summary||'';}}const summaryOutput=$('summaryOutput');if(summaryOutput){summaryOutput.textContent=ch.summary||'';summaryOutput.className='output-area';}switchTab('content');$('chapterInfo').textContent=`查看：第${i+1}章`;}
 
 // 停止/重置
 function stopAll(){if(S.abortCtrl)S.abortCtrl.abort();S.isGenerating=false;setStatus('ready','已停止');addLog('system','用户手动停止');resetPipeline();}
