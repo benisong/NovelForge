@@ -18,11 +18,12 @@ class SaveChapterRequest(BaseModel):
     chapter_num: int
     content: str
 
+
 router = APIRouter()
 
 
 def _project_path(pid: str):
-    safe = re.sub(r'[^\w\-]', '_', pid)
+    safe = re.sub(r"[^\w\-]", "_", pid)
     return DATA_DIR / f"{safe}.json"
 
 
@@ -33,12 +34,14 @@ async def list_projects():
     for f in sorted(DATA_DIR.glob("*.json")):
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
-            projects.append({
-                "id": data.get("project_id", f.stem),
-                "name": data.get("name", f.stem),
-                "chapters": len(data.get("chapters", [])),
-                "updated": data.get("updated", ""),
-            })
+            projects.append(
+                {
+                    "id": data.get("project_id", f.stem),
+                    "name": data.get("name", f.stem),
+                    "chapters": len(data.get("chapters", [])),
+                    "updated": data.get("updated", ""),
+                }
+            )
         except Exception:
             continue
     return {"projects": projects}
@@ -65,10 +68,33 @@ async def latest_project():
 
 @router.post("/api/projects/save")
 async def save_project(req: SaveProjectRequest):
-    """保存/更新一个项目"""
+    """保存/更新一个项目，带防丢失备份机制"""
     data = req.model_dump()
     data["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
     path = _project_path(req.project_id)
+
+    # ==== 自动备份机制开始 ====
+    if path.exists():
+        backup_dir = DATA_DIR / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        # 生成备份文件名，保留时间戳，例如: proj_abc123_20260329_103000.json
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        safe_pid = re.sub(r"[^\w\-]", "_", req.project_id)
+        backup_filename = f"{safe_pid}_{timestamp}.json"
+        backup_path = backup_dir / backup_filename
+
+        try:
+            shutil.copy2(path, backup_path)
+
+            # 自动清理旧备份，只保留最近10个版本的该项目
+            all_backups = sorted(backup_dir.glob(f"{safe_pid}_*.json"))
+            if len(all_backups) > 10:
+                for old_backup in all_backups[:-10]:
+                    old_backup.unlink(missing_ok=True)
+        except Exception as e:
+            print(f"自动备份失败: {e}")
+    # ==== 自动备份机制结束 ====
+
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"ok": True, "path": str(path)}
 
@@ -85,7 +111,7 @@ async def load_project(project_id: str):
 
 def _chapters_dir(project_id: str):
     """获取项目章节文件夹路径"""
-    safe = re.sub(r'[^\w\-]', '_', project_id)
+    safe = re.sub(r"[^\w\-]", "_", project_id)
     return DATA_DIR / "chapters" / safe
 
 
@@ -94,7 +120,7 @@ async def save_chapter(req: SaveChapterRequest):
     """保存正式章节文件"""
     ch_dir = _chapters_dir(req.project_id)
     ch_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = re.sub(r'[\\/:*?"<>|]', '_', req.project_name)
+    safe_name = re.sub(r'[\\/:*?"<>|]', "_", req.project_name)
     filename = f"{safe_name}_正式_第{req.chapter_num}章.txt"
     filepath = ch_dir / filename
     filepath.write_text(req.content, encoding="utf-8")
@@ -149,7 +175,9 @@ async def get_styles():
 @router.post("/api/styles")
 async def save_styles(data: dict):
     """保存文风配置（含自定义文风）"""
-    STYLES_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    STYLES_FILE.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     return {"ok": True}
 
 
@@ -157,6 +185,7 @@ async def save_styles(data: dict):
 async def get_style(style_id: str):
     """获取单个文风详情"""
     from ..styles import _get_style_by_id
+
     style = _get_style_by_id(style_id)
     if not style:
         raise HTTPException(status_code=404, detail="文风不存在")
