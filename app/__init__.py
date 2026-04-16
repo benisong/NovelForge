@@ -31,13 +31,14 @@ MOBILE_UA_HINTS = (
 def _pick_index_file(request: Request) -> str:
     forced_view = request.query_params.get("view", "").strip().lower()
     if forced_view == "mobile":
-        return "mobile.html"
+        # 如果是移动端，我们可以重定向到 /m/
+        return "redirect"
     if forced_view == "desktop":
         return "index.html"
 
     user_agent = request.headers.get("user-agent", "").lower()
     is_mobile = any(hint in user_agent for hint in MOBILE_UA_HINTS)
-    return "mobile.html" if is_mobile else "index.html"
+    return "redirect" if is_mobile else "index.html"
 
 
 def _render_index(file_name: str) -> HTMLResponse:
@@ -46,14 +47,20 @@ def _render_index(file_name: str) -> HTMLResponse:
 
 
 # Index
+from fastapi.responses import RedirectResponse
+
+
 @app.get("/")
 async def index(request: Request):
-    return _render_index(_pick_index_file(request))
+    decision = _pick_index_file(request)
+    if decision == "redirect":
+        return RedirectResponse(url="/m/")
+    return _render_index(decision)
 
 
 @app.get("/mobile")
 async def mobile_index():
-    return _render_index("mobile.html")
+    return RedirectResponse(url="/m/")
 
 
 @app.get("/desktop")
@@ -67,4 +74,21 @@ async def favicon():
 
 
 # Static files
-app.mount("/static", StaticFiles(directory=str(pathlib.Path(__file__).parent.parent / "static")), name="static")
+import os
+
+static_dir = pathlib.Path(__file__).parent.parent / "static"
+app.mount(
+    "/static",
+    StaticFiles(directory=str(static_dir)),
+    name="static",
+)
+
+mobile_dir = static_dir / "m"
+if not mobile_dir.exists():
+    mobile_dir = static_dir / "mobile-app" / "dist"
+
+if mobile_dir.exists():
+    app.mount("/m", StaticFiles(directory=str(mobile_dir), html=True), name="mobile")
+else:
+    os.makedirs(str(mobile_dir), exist_ok=True)
+    app.mount("/m", StaticFiles(directory=str(mobile_dir), html=True), name="mobile")
