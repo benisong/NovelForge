@@ -1,184 +1,265 @@
 <template>
   <div class="memory-view">
-    <!-- 顶部状态提示 -->
     <div class="memory-status-bar">
       <div class="status-left">
         <span class="status-text">
           <van-icon name="flag-o" size="18" />
-          <span style="margin-left: 4px;">全局记忆库</span>
+          <span class="status-copy">全局记忆库</span>
         </span>
       </div>
       <div class="status-right">
-        <van-button 
-          size="mini" 
-          type="primary" 
-          plain 
-          @click="generateBigSummary"
+        <van-button
+          size="mini"
+          type="primary"
+          plain
           :loading="isGeneratingBig"
-        >生成大总结</van-button>
+          @click="generateBigSummary"
+        >
+          生成大总结
+        </van-button>
       </div>
     </div>
 
-    <!-- 记忆内容区 -->
     <div class="memory-content">
       <van-tabs v-model:active="activeTab" sticky color="#1989fa" animated swipeable>
-        <!-- 标签页1：章节摘要 (小总结) -->
         <van-tab title="章节摘要" name="small">
           <div class="tab-content-area">
-            <van-collapse v-model="activeSmallSummaries">
-              <van-collapse-item 
-                v-for="summary in smallSummaries" 
-                :key="summary.chapter" 
+            <van-loading v-if="isGeneratingSmall" size="24px" vertical>正在生成章节总结...</van-loading>
+
+            <van-collapse v-else v-model="activeSmallSummaries">
+              <van-collapse-item
+                v-for="summary in summaryList"
+                :key="summary.chapter"
                 :name="summary.chapter"
                 :title="`第 ${summary.chapter} 章`"
                 :value="summary.time"
               >
                 <div class="summary-toggle">
-                  <van-radio-group v-model="summary.displayMode" direction="horizontal" class="mode-radio">
-                    <van-radio name="abstract">摘要 (Bot1 讨论用)</van-radio>
-                    <van-radio name="condensed">缩略原文 (Bot2 创作用)</van-radio>
+                  <van-radio-group
+                    :model-value="getDisplayMode(summary.chapter)"
+                    direction="horizontal"
+                    class="mode-radio"
+                    @update:model-value="setDisplayMode(summary.chapter, $event)"
+                  >
+                    <van-radio name="abstract">摘要</van-radio>
+                    <van-radio name="condensed">缩略原文</van-radio>
                   </van-radio-group>
                 </div>
-                
-                <div class="summary-text" v-if="summary.displayMode === 'abstract'">
-                  <strong>主要事件：</strong>
-                  <p>{{ summary.abstract.events }}</p>
-                  <strong>人物状态：</strong>
-                  <p>{{ summary.abstract.characters }}</p>
-                  <strong>伏笔：</strong>
-                  <p>{{ summary.abstract.foreshadowing }}</p>
-                </div>
-                
-                <div class="summary-text" v-else>
-                  <p class="condensed-text">{{ summary.condensed }}</p>
+
+                <div class="summary-text">
+                  <pre>{{ getDisplayText(summary) }}</pre>
                 </div>
               </van-collapse-item>
             </van-collapse>
-            <van-empty v-if="smallSummaries.length === 0" description="暂无章节摘要" image="search" />
+
+            <van-empty
+              v-if="!isGeneratingSmall && summaryList.length === 0"
+              description="暂无章节摘要"
+              image="search"
+            />
           </div>
         </van-tab>
 
-        <!-- 标签页2：大总结 -->
         <van-tab title="全局大总结" name="big">
           <div class="tab-content-area">
-            <div 
-              class="big-summary-card" 
-              v-for="(summary, index) in bigSummaries" 
-              :key="index"
-            >
+            <div class="big-summary-card" v-for="(summary, index) in bigSummaryList" :key="index">
               <div class="big-header">
-                <span class="big-range">第 {{ summary.fromChapter }} - {{ summary.toChapter }} 章 总结</span>
+                <span class="big-range">第 {{ summary.fromChapter }} - {{ summary.toChapter }} 章总结</span>
                 <span class="big-time">{{ summary.time }}</span>
               </div>
-              <div class="big-content">
-                <div class="content-section">
-                  <h4>世界观与设定更新</h4>
-                  <p>{{ summary.content.worldview }}</p>
-                </div>
-                <div class="content-section">
-                  <h4>主线推进</h4>
-                  <p>{{ summary.content.main_plot }}</p>
-                </div>
-                <div class="content-section">
-                  <h4>核心人物小传</h4>
-                  <p>{{ summary.content.character_arcs }}</p>
-                </div>
-              </div>
-              <div class="big-actions">
-                 <van-button size="small" plain type="primary" icon="edit">编辑</van-button>
-              </div>
+              <pre class="big-content">{{ formatBigSummary(summary.content) }}</pre>
             </div>
-            <van-empty v-if="bigSummaries.length === 0" description="暂无大总结记录" image="search" />
+            <van-empty v-if="bigSummaryList.length === 0" description="暂无大总结记录" image="search" />
           </div>
         </van-tab>
       </van-tabs>
     </div>
 
-    <!-- 底部导航控制区 -->
     <div class="bottom-nav">
-      <van-button 
-        icon="home-o" 
-        type="default" 
+      <van-button icon="home-o" type="default" size="small" class="nav-btn" @click="backToProjectList">
+        返回列表
+      </van-button>
+
+      <van-button
+        icon="play-circle-o"
+        type="primary"
         size="small"
         class="nav-btn"
-        @click="backToProjectList"
-        v-show="false"
-      >返回列表</van-button>
-      
-      <van-button 
-        icon="play-circle-o" 
-        type="primary" 
-        size="small"
-        class="nav-btn"
+        :disabled="isGeneratingSmall || isGeneratingBig"
         @click="startNextChapter"
-        v-show="false"
-      >进入下一章规划</van-button>
+      >
+        进入下一章规划
+      </van-button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue';
-import { showToast, showConfirmDialog } from 'vant';
+import { computed, ref } from 'vue';
+import { showConfirmDialog, showToast } from 'vant';
+
+import { useProjectStore } from '@/stores/project';
+import {
+  getRuntimeConfig,
+  nowString,
+  readSSE,
+  stringifySummaryContentForDisplay,
+} from '@/lib/workflow';
 
 const emit = defineEmits(['start-next', 'back-home']);
 
+const projectStore = useProjectStore();
+
 const activeTab = ref('small');
-const activeSmallSummaries = ref([1]); // 默认展开第一章
+const activeSmallSummaries = ref([]);
+const displayModes = ref({});
+const isGeneratingSmall = ref(false);
 const isGeneratingBig = ref(false);
 
-// 模拟小总结数据
-const smallSummaries = ref([
-  {
-    chapter: 1,
-    time: '2026-04-15 10:30',
-    displayMode: 'abstract',
-    abstract: {
-      events: '主角夜枭在霓虹市贫民窟发现一具被摘除记忆芯片的赛博格尸体。',
-      characters: '夜枭（冷酷，执着），神秘死者。',
-      foreshadowing: '死者脑内残留的乱码信息：“他们来了……”。'
-    },
-    condensed: '雨，像无数根银针，无情地刺向霓虹市的钢铁苍穹。夜枭拉了拉风衣的领口，试图抵挡无孔不入的寒意。他的眼前是一具倒在巷尾的赛博格躯体。这已经是这个月第三起类似的案件了。所有的受害者都被精准地摘除了记忆芯片。他蹲下身接入死者后颈的插槽。屏幕上跳动着乱码。突然，夜枭的神经接入端传来一阵强烈的刺痛，一个模糊的声音在他的脑海中回荡：『他们来了……』'
-  }
-]);
+const summaryList = computed(() => projectStore.summaries || []);
+const bigSummaryList = computed(() => projectStore.bigSummaries || []);
 
-// 模拟大总结数据
-const bigSummaries = ref([
-  {
-    fromChapter: 1,
-    toChapter: 10,
-    time: '2026-04-14 18:00',
-    content: {
-      worldview: '霓虹市分为上层天城和下层贫民窟。记忆芯片技术普及，但非法摘除交易泛滥。',
-      main_plot: '夜枭从一具无名尸体开始调查，逐渐揭开了由控制天城的“奥林匹斯集团”主导的记忆收割阴谋。他找到了抵抗组织的联络人。',
-      character_arcs: '夜枭：从一个只接底层委托的颓废侦探，逐渐找回被抹去的部分记忆，开始主动对抗集团。'
-    }
+const getDisplayMode = (chapter) => displayModes.value[chapter] || 'abstract';
+
+const setDisplayMode = (chapter, mode) => {
+  displayModes.value = {
+    ...displayModes.value,
+    [chapter]: mode,
+  };
+};
+
+const getDisplayText = (summary) => {
+  const mode = getDisplayMode(summary.chapter);
+  return mode === 'condensed'
+    ? stringifySummaryContentForDisplay(summary.condensed)
+    : stringifySummaryContentForDisplay(summary.abstract);
+};
+
+const formatBigSummary = (content) => stringifySummaryContentForDisplay(content);
+
+const getPendingChapter = () => {
+  const nextIndex = projectStore.summaries.length;
+  return projectStore.chapters[nextIndex] || null;
+};
+
+const ensureCurrentSummary = async () => {
+  const chapter = getPendingChapter();
+  if (!chapter || isGeneratingSmall.value) {
+    return false;
   }
-]);
+
+  const config = getRuntimeConfig(projectStore.config);
+  if (!config) {
+    showToast('请先在设置页填写 Bot4 配置');
+    return false;
+  }
+
+  const chapterNumber = projectStore.summaries.length + 1;
+  isGeneratingSmall.value = true;
+  activeTab.value = 'small';
+
+  try {
+    const condensed = await readSSE('/api/bot4/summarize', {
+      content: chapter.content,
+      outline: chapter.chapter_outline || chapter.outline || projectStore.chapterOutline || projectStore.currentOutline,
+      config,
+    });
+
+    const abstract = await readSSE('/api/bot4/abstract', {
+      condensed,
+      content: chapter.content,
+      config,
+      abstract_model: config.bot4_abstract_model,
+    });
+
+    const entry = {
+      chapter: chapterNumber,
+      condensed,
+      abstract,
+      time: nowString(),
+    };
+
+    projectStore.summaries.push(entry);
+    if (projectStore.chapters[chapterNumber - 1]) {
+      projectStore.chapters[chapterNumber - 1].summary = condensed;
+    }
+    setDisplayMode(chapterNumber, 'abstract');
+    activeSmallSummaries.value = [chapterNumber];
+    await projectStore.saveProject();
+    return true;
+  } catch (error) {
+    showToast(error.message || '章节总结生成失败');
+    return false;
+  } finally {
+    isGeneratingSmall.value = false;
+  }
+};
 
 const generateBigSummary = () => {
+  const lastBigTo = projectStore.bigSummaries.at(-1)?.toChapter || 0;
+  const pendingSummaries = projectStore.summaries.filter((item) => item.chapter > lastBigTo);
+  if (pendingSummaries.length === 0 || isGeneratingBig.value) {
+    showToast('没有可生成的大总结内容');
+    return;
+  }
+
+  const config = getRuntimeConfig(projectStore.config);
+  if (!config) {
+    showToast('请先在设置页填写 Bot4 配置');
+    return;
+  }
+
+  const fromChapter = pendingSummaries[0].chapter;
+  const toChapter = pendingSummaries[pendingSummaries.length - 1].chapter;
+  const abstractCount = Math.max(1, Math.floor(pendingSummaries.length * 0.6));
+  const condensedCount = Math.max(0, pendingSummaries.length - abstractCount);
+
   showConfirmDialog({
     title: '生成大总结',
-    message: '将消耗一定 Token 读取最近章节的摘要和原文生成全局总结。确定生成吗？',
-  }).then(() => {
-    isGeneratingBig.value = true;
-    showToast({ type: 'loading', message: 'Bot4 正在总结...', duration: 2000 });
-    setTimeout(() => {
-      isGeneratingBig.value = false;
-      showToast('大总结生成成功！');
-      activeTab.value = 'big';
-    }, 2000);
-  }).catch(() => {});
+    message: `将整合第 ${fromChapter} - ${toChapter} 章的记忆内容，确定继续吗？`,
+  })
+    .then(async () => {
+      isGeneratingBig.value = true;
+      try {
+        const content = await readSSE('/api/bot4/big-summarize', {
+          summaries: pendingSummaries,
+          config,
+          abstract_count: abstractCount,
+          condensed_count: condensedCount,
+        });
+
+        projectStore.bigSummaries.push({
+          fromChapter,
+          toChapter,
+          content,
+          time: nowString(),
+        });
+        activeTab.value = 'big';
+        await projectStore.saveProject();
+        showToast('大总结生成完成');
+      } catch (error) {
+        showToast(error.message || '大总结生成失败');
+      } finally {
+        isGeneratingBig.value = false;
+      }
+    })
+    .catch(() => {});
 };
 
 const backToProjectList = () => {
-  // 实际项目中应使用 router.push
   emit('back-home');
 };
 
-const startNextChapter = () => {
+const startNextChapter = async () => {
+  projectStore.currentContent = '';
+  projectStore.chapterOutline = '';
+  await projectStore.saveProject();
   emit('start-next');
 };
+
+defineExpose({
+  ensureCurrentSummary,
+});
 </script>
 
 <style scoped>
@@ -200,26 +281,30 @@ const startNextChapter = () => {
 }
 
 .status-left .status-text {
-  font-size: 15px;
-  font-weight: bold;
-  color: #323233;
   display: flex;
   align-items: center;
+  color: #323233;
+  font-size: 15px;
+  font-weight: bold;
+}
+
+.status-copy {
+  margin-left: 4px;
 }
 
 .memory-content {
   flex: 1;
-  overflow-y: hidden; /* 让 tabs 内部去滚动 */
   display: flex;
   flex-direction: column;
+  overflow-y: hidden;
 }
 
-/* 撑满 tabs 容器 */
 :deep(.van-tabs) {
   display: flex;
   flex-direction: column;
   height: 100%;
 }
+
 :deep(.van-tabs__content) {
   flex: 1;
   overflow-y: auto;
@@ -230,47 +315,42 @@ const startNextChapter = () => {
   padding: 12px;
 }
 
-/* 小总结样式 */
 .summary-toggle {
   margin-bottom: 12px;
   padding-bottom: 8px;
   border-bottom: 1px dashed #ebedf0;
 }
+
 .mode-radio {
   font-size: 13px;
 }
+
 .mode-radio :deep(.van-radio__label) {
   color: #646566;
 }
 
 .summary-text {
-  font-size: 14px;
   color: #323233;
+  font-size: 14px;
   line-height: 1.6;
 }
-.summary-text strong {
-  color: #1989fa;
-  display: block;
-  margin-top: 8px;
-}
-.summary-text p {
-  margin: 4px 0 0 0;
-  color: #646566;
-}
-.condensed-text {
-  font-family: 'Georgia', serif;
-  color: #323233 !important;
-  text-align: justify;
+
+.summary-text pre,
+.big-content {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
 }
 
-/* 大总结样式 */
 .big-summary-card {
+  margin-bottom: 16px;
+  padding: 16px;
   background-color: #fff;
   border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 16px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
+
 .big-header {
   display: flex;
   justify-content: space-between;
@@ -279,55 +359,30 @@ const startNextChapter = () => {
   padding-bottom: 8px;
   border-bottom: 1px solid #ebedf0;
 }
+
 .big-range {
-  font-weight: bold;
-  font-size: 16px;
   color: #323233;
+  font-size: 16px;
+  font-weight: bold;
 }
+
 .big-time {
-  font-size: 12px;
   color: #969799;
-}
-
-.content-section {
-  margin-bottom: 12px;
-}
-.content-section h4 {
-  margin: 0 0 6px 0;
-  font-size: 14px;
-  color: #1989fa;
-}
-.content-section p {
-  margin: 0;
-  font-size: 14px;
-  color: #646566;
-  line-height: 1.5;
-}
-
-.big-actions {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
+  font-size: 12px;
 }
 
 .bottom-nav {
   display: flex;
   justify-content: space-between;
+  gap: 12px;
   padding: 12px 16px;
   background-color: #fff;
   border-top: 1px solid #ebedf0;
-  box-shadow: 0 -2px 10px rgba(0,0,0,0.02);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.02);
   flex-shrink: 0;
 }
 
 .nav-btn {
   flex: 1;
-  margin: 0 8px;
-}
-.nav-btn:first-child {
-  margin-left: 0;
-}
-.nav-btn:last-child {
-  margin-right: 0;
 }
 </style>

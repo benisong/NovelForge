@@ -1,6 +1,5 @@
 <template>
   <div class="project-detail-container">
-    <!-- 全局顶部导航 -->
     <van-nav-bar
       title="NovelForge"
       fixed
@@ -13,30 +12,27 @@
       </template>
       <template #title>
         <span class="project-title">{{ currentProjectName }}</span>
-        <!-- 大纲入口，按需在卡片中显示，这里可以统一入口或者放在特定卡片 -->
       </template>
       <template #right>
         <van-icon name="setting-o" size="20" @click="openSettings" />
       </template>
     </van-nav-bar>
 
-    <!-- 侧边抽屉导航 -->
     <van-popup
       v-model:show="showDrawer"
       position="left"
       :style="{ width: '70%', height: '100%' }"
     >
       <div class="drawer-header">
-        <h3>项目列表</h3>
+        <h3>项目菜单</h3>
       </div>
       <van-cell-group>
-        <van-cell title="切换项目" is-link />
-        <van-cell title="导入配置" is-link />
-        <van-cell title="返回PC端" is-link @click="backToPC" />
+        <van-cell title="查看大纲" is-link @click="openOutlineFromDrawer" />
+        <van-cell title="打开设置" is-link @click="openSettings" />
+        <van-cell title="返回 PC 端" is-link @click="backToPC" />
       </van-cell-group>
     </van-popup>
 
-    <!-- 全局悬浮左右切换箭头 -->
     <div class="side-arrow left-arrow" v-show="currentCardIndex > 0" @click="goPrevCard">
       <van-icon name="arrow-left" size="24" color="#fff" />
     </div>
@@ -44,52 +40,39 @@
       <van-icon name="arrow" size="24" color="#fff" />
     </div>
 
-    <!-- 卡片滑动容器 -->
     <van-swipe
+      ref="swipeRef"
       class="main-swipe"
       :loop="false"
       :show-indicators="false"
       :touchable="false"
-      ref="swipeRef"
       @change="onSwipeChange"
     >
-      <!-- 卡片1：规划 (Bot1) -->
       <van-swipe-item class="swipe-item">
-        <PlanningView 
-          @next="goNextCard" 
-          @show-outline="showOutline = true" 
-        />
+        <PlanningView @next="goNextCard" @show-outline="showOutline = true" />
       </van-swipe-item>
 
-      <!-- 卡片2：创作 (Bot2) -->
       <van-swipe-item class="swipe-item">
-        <WritingView 
-          ref="writingViewRef"
-          @prev="goPrevCard"
-          @next="goNextCard"
-        />
+        <WritingView ref="writingViewRef" @prev="goPrevCard" @next="goNextCard" />
       </van-swipe-item>
 
-      <!-- 卡片3：审核 (Bot3) -->
       <van-swipe-item class="swipe-item">
-        <ReviewView />
+        <ReviewView ref="reviewViewRef" @rewrite="handleRewrite" @approve="handleApprove" />
       </van-swipe-item>
 
-      <!-- 卡片4：记忆 (Bot4) -->
       <van-swipe-item class="swipe-item">
-        <MemoryView />
+        <MemoryView ref="memoryViewRef" @start-next="startNextChapter" @back-home="backToPC" />
       </van-swipe-item>
     </van-swipe>
 
-    <!-- 底部弹出：大纲视图 -->
     <van-action-sheet v-model:show="showOutline" title="大纲参考">
       <div class="outline-content">
         <van-collapse v-model="activeOutlineNames">
           <van-collapse-item title="总大纲" name="global">
-            <div style="white-space: pre-wrap;">{{ projectStore.currentOutline || '暂无总大纲' }}</div>
+            <div class="outline-text">{{ projectStore.currentOutline || '暂无总大纲' }}</div>
           </van-collapse-item>
           <van-collapse-item title="章节大纲" name="chapter">
-            <div style="white-space: pre-wrap;">{{ projectStore.chapterOutline || '暂无当前章节大纲' }}</div>
+            <div class="outline-text">{{ projectStore.chapterOutline || '暂无当前章节大纲' }}</div>
           </van-collapse-item>
         </van-collapse>
       </div>
@@ -98,97 +81,130 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { useProjectStore } from '@/stores/project';
-import PlanningView from './Planning.vue';
-import WritingView from './Writing.vue';
-import ReviewView from './Review.vue';
-import MemoryView from './Memory.vue';
 
-const router = useRouter();
+import { useProjectStore } from '@/stores/project';
+
+import MemoryView from './Memory.vue';
+import PlanningView from './Planning.vue';
+import ReviewView from './Review.vue';
+import WritingView from './Writing.vue';
+
 const projectStore = useProjectStore();
+const router = useRouter();
 
 const showDrawer = ref(false);
 const showOutline = ref(false);
 const activeOutlineNames = ref(['global', 'chapter']);
-
-// 直接从 Store 映射名称
-const currentProjectName = ref(projectStore.projectName);
-
 const swipeRef = ref(null);
-const currentCardIndex = ref(0);
 const writingViewRef = ref(null);
+const reviewViewRef = ref(null);
+const memoryViewRef = ref(null);
+const currentCardIndex = ref(0);
+
+const currentProjectName = computed(() => projectStore.projectName || '我的小说');
 
 onMounted(async () => {
-  // 1. 先加载配置 (因为可能是从 settings.html 跳回来的)
   await projectStore.loadConfig();
-  // 2. 加载项目状态
   await projectStore.loadProject();
-  currentProjectName.value = projectStore.projectName;
 });
 
 const onSwipeChange = (index) => {
   currentCardIndex.value = index;
 };
 
-const handleRewrite = (data) => {
-  console.log('触发重写:', data.type, '建议:', data.suggestions);
-  if (swipeRef.value) {
-    swipeRef.value.prev(); // 返回到创作卡片
-    if (writingViewRef.value) {
-      // writingViewRef.value.startGenerating(data.suggestions); // 实际调用传递建议
-    }
+const ensureCurrentChapterSaved = async () => {
+  const content = String(projectStore.currentContent || '').trim();
+  if (!content) {
+    return;
   }
-};
 
-const startNextChapter = () => {
-  // 处理清空当前章节数据，准备下一章规划
-  showOutline.value = false;
-  if (swipeRef.value) {
-     swipeRef.value.swipeTo(0); // 滑动回卡片1 (规划)
+  const latestChapter = projectStore.chapters.at(-1);
+  if (!latestChapter || latestChapter.content !== content) {
+    projectStore.chapters.push({
+      outline: projectStore.currentOutline,
+      chapter_outline: projectStore.chapterOutline,
+      content,
+      summary: '',
+    });
   }
-};
 
-const goNextCard = () => {
-  if (swipeRef.value && currentCardIndex.value < 3) {
-    swipeRef.value.next();
-  }
-};
-
-const goPrevCard = () => {
-  if (swipeRef.value && currentCardIndex.value > 0) {
-    swipeRef.value.prev();
-  }
-};
-
-const openSettings = async () => {
-  // 跳转前强行触发一次状态同步保存
   await projectStore.saveProject();
-  window.location.href = './settings.html';
 };
 
-const goNextCard = () => {
-  if (swipeRef.value && currentCardIndex.value < 3) {
-    swipeRef.value.next();
+const goToCard = async (index) => {
+  if (!swipeRef.value) {
+    return;
+  }
+
+  swipeRef.value.swipeTo(index);
+  currentCardIndex.value = index;
+  await nextTick();
+
+  if (index === 1 && !String(projectStore.currentContent || '').trim()) {
+    writingViewRef.value?.startGenerating?.();
+  }
+
+  if (index === 2) {
+    reviewViewRef.value?.runReview?.();
+  }
+
+  if (index === 3) {
+    await memoryViewRef.value?.ensureCurrentSummary?.();
   }
 };
 
-const goPrevCard = () => {
-  if (swipeRef.value && currentCardIndex.value > 0) {
-    swipeRef.value.prev();
+const goNextCard = async () => {
+  if (currentCardIndex.value >= 3) {
+    return;
   }
+
+  await goToCard(currentCardIndex.value + 1);
+};
+
+const goPrevCard = async () => {
+  if (currentCardIndex.value <= 0) {
+    return;
+  }
+
+  await goToCard(currentCardIndex.value - 1);
+};
+
+const handleRewrite = async (data) => {
+  await goToCard(1);
+  writingViewRef.value?.startGenerating?.(data?.suggestions ?? []);
+};
+
+const handleApprove = async () => {
+  await ensureCurrentChapterSaved();
+  await goToCard(3);
+};
+
+const startNextChapter = async () => {
+  showOutline.value = false;
+  showDrawer.value = false;
+  projectStore.currentContent = '';
+  projectStore.chapterOutline = '';
+  await projectStore.saveProject();
+  await goToCard(0);
+};
+
+const openOutlineFromDrawer = () => {
+  showDrawer.value = false;
+  showOutline.value = true;
 };
 
 const openSettings = async () => {
-  // 1. 如果有当前项目且有内容，跳出前先调用后端的保存接口（这里暂时简单处理，通知Store或直接存LocalStorage）
-  // 考虑到现在是纯前端演示结构，我们只做页面跳转
-  // 真正对接后端时，这里需要 await saveProject()
-  window.location.href = './settings.html';
+  showDrawer.value = false;
+  await projectStore.saveProject();
+  router.push('/settings');
 };
 
-const backToPC = () => {
-  window.location.href = '/';
+const backToPC = async () => {
+  showDrawer.value = false;
+  await projectStore.saveProject();
+  window.location.assign('/');
 };
 </script>
 
@@ -196,17 +212,18 @@ const backToPC = () => {
 .project-detail-container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100dvh;
 }
 
 .global-nav {
   z-index: 100;
-  border-bottom: 1px solid #ebedf0;
+  border-bottom: 1px solid var(--app-border);
+  background: transparent;
 }
 
 .project-title {
-  font-weight: 600;
   font-size: 16px;
+  font-weight: 600;
 }
 
 .main-swipe {
@@ -216,66 +233,59 @@ const backToPC = () => {
 }
 
 .swipe-item {
-  height: 100%;
-  overflow-y: hidden; /* 由内部组件决定是否滚动 */
-  background-color: #fff;
   display: flex;
   flex-direction: column;
-}
-
-/* 占位符卡片样式，后续会被具体组件替换 */
-.placeholder-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
   height: 100%;
-  padding: 20px;
-}
-
-.nav-controls {
-  margin-top: 20px;
-  display: flex;
-  gap: 20px;
+  overflow-y: hidden;
+  background-color: transparent;
 }
 
 .drawer-header {
   padding: 20px;
-  border-bottom: 1px solid #ebedf0;
+  border-bottom: 1px solid var(--app-border);
 }
+
 .drawer-header h3 {
   margin: 0;
 }
 
 .outline-content {
-  padding: 16px;
   min-height: 40vh;
   max-height: 70vh;
+  padding: 16px;
   overflow-y: auto;
+}
+
+.outline-text {
+  white-space: pre-wrap;
+  line-height: 1.6;
 }
 
 .side-arrow {
   position: absolute;
   top: 50%;
-  transform: translateY(-50%);
   z-index: 100;
-  width: 40px;
-  height: 80px;
-  background-color: rgba(0, 0, 0, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 40px;
+  height: 80px;
+  background-color: rgba(31, 24, 19, 0.24);
   border-radius: 8px;
   backdrop-filter: blur(4px);
+  transform: translateY(-50%);
 }
+
 .side-arrow:active {
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: rgba(31, 24, 19, 0.42);
 }
+
 .left-arrow {
   left: 0;
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
 }
+
 .right-arrow {
   right: 0;
   border-top-right-radius: 0;
