@@ -36,6 +36,14 @@
       </van-cell-group>
     </van-popup>
 
+    <!-- 全局悬浮左右切换箭头 -->
+    <div class="side-arrow left-arrow" v-show="currentCardIndex > 0" @click="goPrevCard">
+      <van-icon name="arrow-left" size="24" color="#fff" />
+    </div>
+    <div class="side-arrow right-arrow" v-show="currentCardIndex < 3" @click="goNextCard">
+      <van-icon name="arrow" size="24" color="#fff" />
+    </div>
+
     <!-- 卡片滑动容器 -->
     <van-swipe
       class="main-swipe"
@@ -64,18 +72,12 @@
 
       <!-- 卡片3：审核 (Bot3) -->
       <van-swipe-item class="swipe-item">
-        <ReviewView 
-          @rewrite="handleRewrite"
-          @approve="goNextCard"
-        />
+        <ReviewView />
       </van-swipe-item>
 
       <!-- 卡片4：记忆 (Bot4) -->
       <van-swipe-item class="swipe-item">
-        <MemoryView 
-          @start-next="startNextChapter"
-          @back-home="backToPC"
-        />
+        <MemoryView />
       </van-swipe-item>
     </van-swipe>
 
@@ -118,38 +120,14 @@ const onSwipeChange = (index) => {
   currentCardIndex.value = index;
 };
 
-const handleRewrite = (data) => {
-  console.log('触发重写:', data.type, '建议:', data.suggestions);
-  if (swipeRef.value) {
-    swipeRef.value.prev(); // 返回到创作卡片
-    if (writingViewRef.value) {
-      // writingViewRef.value.startGenerating(data.suggestions); // 实际调用传递建议
-    }
-  }
-};
-
-const startNextChapter = () => {
-  // 处理清空当前章节数据，准备下一章规划
-  showOutline.value = false;
-  if (swipeRef.value) {
-     swipeRef.value.swipeTo(0); // 滑动回卡片1 (规划)
-  }
-};
-
 const goNextCard = () => {
-  if (swipeRef.value) {
+  if (swipeRef.value && currentCardIndex.value < 3) {
     swipeRef.value.next();
-    
-    // 如果切到了创作卡片，且该卡片还未开始生成，则触发一下
-    if (currentCardIndex.value === 1 && writingViewRef.value) {
-        // 可选：在这里调用 writingViewRef.value.startGenerating() 
-        // 配合 Planning 页面的“确认”操作
-    }
   }
 };
 
 const goPrevCard = () => {
-  if (swipeRef.value) {
+  if (swipeRef.value && currentCardIndex.value > 0) {
     swipeRef.value.prev();
   }
 };
@@ -223,5 +201,33 @@ const backToPC = () => {
   min-height: 40vh;
   max-height: 70vh;
   overflow-y: auto;
+}
+
+.side-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 100;
+  width: 40px;
+  height: 80px;
+  background-color: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+}
+.side-arrow:active {
+  background-color: rgba(0, 0, 0, 0.5);
+}
+.left-arrow {
+  left: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.right-arrow {
+  right: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
 }
 </style>

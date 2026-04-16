@@ -102,6 +102,7 @@
         size="small"
         class="nav-btn"
         @click="backToProjectList"
+        v-show="false"
       >返回列表</van-button>
       
       <van-button 
@@ -110,6 +111,7 @@
         size="small"
         class="nav-btn"
         @click="startNextChapter"
+        v-show="false"
       >进入下一章规划</van-button>
     </div>
   </div>

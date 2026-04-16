@@ -94,6 +94,7 @@
           type="success" 
           class="action-btn"
           @click="handleApprove"
+          v-show="false"
         >通过并总结</van-button>
       </template>
     </div>

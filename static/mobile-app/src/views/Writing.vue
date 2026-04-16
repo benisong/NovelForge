@@ -40,6 +40,7 @@
         size="small"
         class="nav-btn"
         @click="$emit('prev')"
+        v-show="false"
       >返回修改大纲</van-button>
       
       <van-button 
@@ -49,6 +50,7 @@
         class="nav-btn"
         :disabled="isGenerating || !content"
         @click="$emit('next')"
+        v-show="false"
       >去审计</van-button>
     </div>
   </div>

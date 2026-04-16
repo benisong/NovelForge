@@ -18,6 +18,7 @@
           type="primary" 
           @click="confirmOutlineAndNext"
           class="next-btn"
+          v-show="false"
         >确认并创作</van-button>
       </div>
     </div>
