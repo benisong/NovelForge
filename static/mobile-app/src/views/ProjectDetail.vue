@@ -86,10 +86,10 @@
       <div class="outline-content">
         <van-collapse v-model="activeOutlineNames">
           <van-collapse-item title="总大纲" name="global">
-            <p>（总大纲内容展示区）</p>
+            <div style="white-space: pre-wrap;">{{ projectStore.currentOutline || '暂无总大纲' }}</div>
           </van-collapse-item>
           <van-collapse-item title="章节大纲" name="chapter">
-            <p>（当前章节大纲内容展示区）</p>
+            <div style="white-space: pre-wrap;">{{ projectStore.chapterOutline || '暂无当前章节大纲' }}</div>
           </van-collapse-item>
         </van-collapse>
       </div>
@@ -98,26 +98,56 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
+import { useProjectStore } from '@/stores/project';
 import PlanningView from './Planning.vue';
 import WritingView from './Writing.vue';
 import ReviewView from './Review.vue';
 import MemoryView from './Memory.vue';
 
 const router = useRouter();
+const projectStore = useProjectStore();
 
 const showDrawer = ref(false);
 const showOutline = ref(false);
 const activeOutlineNames = ref(['global', 'chapter']);
-const currentProjectName = ref('我的小说1');
+
+// 直接从 Store 映射名称
+const currentProjectName = ref(projectStore.projectName);
 
 const swipeRef = ref(null);
 const currentCardIndex = ref(0);
 const writingViewRef = ref(null);
 
+onMounted(async () => {
+  // 1. 先加载配置 (因为可能是从 settings.html 跳回来的)
+  await projectStore.loadConfig();
+  // 2. 加载项目状态
+  await projectStore.loadProject();
+  currentProjectName.value = projectStore.projectName;
+});
+
 const onSwipeChange = (index) => {
   currentCardIndex.value = index;
+};
+
+const handleRewrite = (data) => {
+  console.log('触发重写:', data.type, '建议:', data.suggestions);
+  if (swipeRef.value) {
+    swipeRef.value.prev(); // 返回到创作卡片
+    if (writingViewRef.value) {
+      // writingViewRef.value.startGenerating(data.suggestions); // 实际调用传递建议
+    }
+  }
+};
+
+const startNextChapter = () => {
+  // 处理清空当前章节数据，准备下一章规划
+  showOutline.value = false;
+  if (swipeRef.value) {
+     swipeRef.value.swipeTo(0); // 滑动回卡片1 (规划)
+  }
 };
 
 const goNextCard = () => {
@@ -132,8 +162,29 @@ const goPrevCard = () => {
   }
 };
 
-const openSettings = () => {
-  console.log('Open Settings');
+const openSettings = async () => {
+  // 跳转前强行触发一次状态同步保存
+  await projectStore.saveProject();
+  window.location.href = './settings.html';
+};
+
+const goNextCard = () => {
+  if (swipeRef.value && currentCardIndex.value < 3) {
+    swipeRef.value.next();
+  }
+};
+
+const goPrevCard = () => {
+  if (swipeRef.value && currentCardIndex.value > 0) {
+    swipeRef.value.prev();
+  }
+};
+
+const openSettings = async () => {
+  // 1. 如果有当前项目且有内容，跳出前先调用后端的保存接口（这里暂时简单处理，通知Store或直接存LocalStorage）
+  // 考虑到现在是纯前端演示结构，我们只做页面跳转
+  // 真正对接后端时，这里需要 await saveProject()
+  window.location.href = './settings.html';
 };
 
 const backToPC = () => {

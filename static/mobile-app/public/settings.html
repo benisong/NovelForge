@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>设置 - NovelForge</title>
+  <link rel="stylesheet" href="./settings/settings.css">
+</head>
+<body>
+  <div class="nav-bar">
+    <button class="nav-btn" onclick="goBack()">
+      <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      返回
+    </button>
+    <div class="nav-title">全局设置</div>
+    <button class="nav-btn primary" onclick="saveConfigs()">保存</button>
+  </div>
+
+  <div class="settings-container">
+    <div id="toast" class="toast"></div>
+
+    <div class="section-title">全局参数</div>
+    <div class="card">
+      <div class="form-item">
+        <label>及格分 (Bot3)</label>
+        <input type="number" id="pass_score" step="0.1" value="8.0">
+      </div>
+      <div class="form-item">
+        <label>最大重写次数</label>
+        <input type="number" id="max_retries" value="3">
+      </div>
+      <div class="form-item">
+        <label>主题模式</label>
+        <select id="theme_mode" onchange="changeTheme(this.value)">
+          <option value="light">浅色模式</option>
+          <option value="dark">深色模式</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 动态生成 Bot 配置 -->
+    <div id="botConfigsContainer"></div>
+    
+  </div>
+
+  <script src="./settings/settings.js"></script>
+</body>
+</html>
