@@ -1,6 +1,8 @@
+import { apiUrl, loginUrl } from './url';
+
 export async function fetchStream(url, body, onMessage, signal) {
   try {
-    const response = await fetch(url, {
+    const response = await fetch(apiUrl(url), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -8,6 +10,11 @@ export async function fetchStream(url, body, onMessage, signal) {
       body: JSON.stringify(body),
       signal
     });
+
+    if (response.status === 401) {
+      window.location.href = loginUrl();
+      throw new Error('未登录');
+    }
 
     if (!response.ok) {
       let errMsg = `HTTP Error ${response.status}`;

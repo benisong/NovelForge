@@ -6,7 +6,8 @@ import Components from 'unplugin-vue-components/vite'
 import { VantResolver } from '@vant/auto-import-resolver'
 
 export default defineConfig({
-  base: '/m/',
+  // 静态产物部署在 /m/static/，与动态路由 /m/w/<slug>/ 共存
+  base: '/m/static/',
   plugins: [
     vue(),
     AutoImport({

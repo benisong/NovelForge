@@ -124,6 +124,7 @@ import { showConfirmDialog, showToast } from 'vant';
 
 import { useProjectStore } from '@/stores/project';
 import { getRuntimeConfig, nowString } from '@/lib/workflow';
+import { apiUrl, loginUrl } from '@/api/url';
 
 const emit = defineEmits(['rewrite', 'approve']);
 
@@ -242,7 +243,7 @@ const runReview = async () => {
 
   isLoading.value = true;
   try {
-    const response = await fetch('/api/bot3/review', {
+    const response = await fetch(apiUrl('/api/bot3/review'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -254,6 +255,10 @@ const runReview = async () => {
       }),
     });
 
+    if (response.status === 401) {
+      window.location.href = loginUrl();
+      return;
+    }
     const review = await response.json();
     if (review.error && !review.scores) {
       throw new Error(review.error);

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
+import { apiUrl, loginUrl } from '@/api/url';
 
 const BOT_KEYS = ['bot1', 'bot2', 'bot3', 'bot4'];
 
@@ -106,7 +107,7 @@ export function normalizeConfig(rawConfig = {}) {
 }
 
 async function fetchLatestProjectId() {
-  const response = await fetch('/api/projects/latest');
+  const response = await fetch(apiUrl('/api/projects/latest'));
   if (!response.ok) {
     return '';
   }
@@ -116,7 +117,7 @@ async function fetchLatestProjectId() {
 }
 
 async function fetchConfigsFromServer() {
-  const response = await fetch('/api/configs');
+  const response = await fetch(apiUrl('/api/configs'));
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
@@ -172,7 +173,7 @@ export const useProjectStore = defineStore('project', () => {
     const normalized = normalizeConfig(nextConfig);
 
     try {
-      const response = await fetch('/api/configs', {
+      const response = await fetch(apiUrl('/api/configs'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildConfigPayload(normalized)),
@@ -192,7 +193,7 @@ export const useProjectStore = defineStore('project', () => {
 
   const fetchAvailableModels = async ({ baseUrl, apiKey }) => {
     try {
-      const response = await fetch('/api/models', {
+      const response = await fetch(apiUrl('/api/models'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -237,7 +238,7 @@ export const useProjectStore = defineStore('project', () => {
     }
 
     try {
-      const response = await fetch(`/api/projects/${targetId}`);
+      const response = await fetch(apiUrl(`/api/projects/${targetId}`));
       if (!response.ok) {
         return false;
       }
@@ -286,7 +287,7 @@ export const useProjectStore = defineStore('project', () => {
     };
 
     try {
-      const response = await fetch('/api/projects/save', {
+      const response = await fetch(apiUrl('/api/projects/save'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

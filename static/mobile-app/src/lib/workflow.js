@@ -1,3 +1,5 @@
+import { apiUrl, loginUrl } from '@/api/url';
+
 const BOT_DEFAULTS = {
   bot1: { temperature: 0.7, max_tokens: 4096 },
   bot2: { temperature: 0.8, max_tokens: 8192 },
@@ -70,12 +72,17 @@ export function getRuntimeConfig(rawConfig) {
 
 export async function readSSE(url, body, options = {}) {
   const { signal, onChunk } = options;
-  const response = await fetch(url, {
+  const response = await fetch(apiUrl(url), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     signal,
   });
+
+  if (response.status === 401) {
+    window.location.href = loginUrl();
+    throw new Error('未登录');
+  }
 
   if (!response.ok) {
     const message = await response.text();

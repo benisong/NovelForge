@@ -38,6 +38,15 @@
             <span class="metric-caption">配置名</span>
             <strong>{{ draftConfig.name || '默认配置' }}</strong>
           </div>
+          <div class="hero-metric">
+            <span class="metric-caption">工作空间</span>
+            <strong>{{ workspaceSlug || '—' }}</strong>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <a class="nav-save-button" :href="`/w/${workspaceSlug}/logout`" style="flex:1;text-align:center;text-decoration:none;background:transparent;border:1px solid var(--border)">退出登录</a>
+          <a class="nav-save-button" href="/" style="flex:1;text-align:center;text-decoration:none;background:transparent;border:1px solid var(--border)">切换工作空间</a>
         </div>
       </section>
 
@@ -260,6 +269,9 @@ import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
 
 import { createDefaultConfig, useProjectStore } from '@/stores/project';
+import { getWorkspace } from '@/api/url';
+
+const workspaceSlug = getWorkspace();
 
 const THEME_STORAGE_KEY = 'nf_theme';
 
