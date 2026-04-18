@@ -3,11 +3,14 @@
 ## 方式一：直接运行（开发/本地）
 
 ```bash
-cd novel-assistant
+cd NovelForge
+cp .env.example .env    # 至少填 ADMIN_TOKEN 和 WORKSPACE_COOKIE_SECRET
 pip install -r requirements.txt
-python app.py
-# 访问 http://localhost:8000
+python run.py
+# 访问 http://localhost:17000
 ```
+
+> 详细说明见根目录的 `README.md`。
 
 ## 方式二：Docker 部署（推荐用于VPS）
 
@@ -45,7 +48,7 @@ server {
     server_name your-domain.com;
 
     location / {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:17000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -77,7 +80,7 @@ Type=simple
 User=www-data
 WorkingDirectory=/opt/novel-assistant
 Environment=NOVEL_DATA_DIR=/opt/novel-assistant/data
-ExecStart=/usr/bin/python3 -m uvicorn app:app --host 0.0.0.0 --port 8000
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 0.0.0.0 --port 17000
 Restart=always
 RestartSec=5
 

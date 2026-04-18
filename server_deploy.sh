@@ -22,6 +22,6 @@ echo "🧹 清理悬空镜像..."
 docker image prune -f
 
 echo "✅ 部署完成！"
-echo "🌐 PC 端访问: http://您的服务器IP:8000"
-echo "📱 移动端访问: http://您的服务器IP:8000/m/"
+echo "🌐 PC 端访问: http://您的服务器IP:17000"
+echo "📱 移动端访问: http://您的服务器IP:17000/m/w/<slug>/"
 echo "📝 查看日志: docker-compose logs -f"

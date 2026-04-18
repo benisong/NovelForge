@@ -42,14 +42,14 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-默认绑 `127.0.0.1:8000`，需要外网访问改 `.env` 里 `BIND_ADDR=0.0.0.0`，并务必前置 Nginx + HTTPS。
+默认对外绑 `0.0.0.0:17000`。只想本机访问：`.env` 里改 `BIND_ADDR=127.0.0.1`。**公网部署请务必前置 Nginx + HTTPS**。
 
 ### 3. 创建第一个工作空间
 
 浏览器打开：
 
 ```
-http://127.0.0.1:8000/admin?token=<你刚才设置的 ADMIN_TOKEN>
+http://你的服务器地址:17000/admin?token=<你刚才设置的 ADMIN_TOKEN>
 ```
 
 填 slug（例如 `alice`）、显示名、初始密码，点"创建"。
@@ -99,8 +99,8 @@ http://127.0.0.1:8000/admin?token=<你刚才设置的 ADMIN_TOKEN>
 
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
-| `BIND_ADDR` | `127.0.0.1` | docker-compose 端口绑定地址；公网用 `0.0.0.0` |
-| `PORT` | `8000` | 对外端口 |
+| `BIND_ADDR` | `0.0.0.0` | docker-compose 端口绑定地址；只想本机访问改 `127.0.0.1` |
+| `PORT` | `17000` | 对外端口 |
 | `NOVEL_DATA_DIR` | `data/`（容器内 `/app/data`） | 所有持久化数据根目录 |
 | `DEV_RELOAD` | `false` | 本地开发热重载；生产必须 `false` |
 | `LOG_LEVEL` | `INFO` | `DEBUG` / `INFO` / `WARNING` / `ERROR` |
@@ -127,7 +127,7 @@ http://127.0.0.1:8000/admin?token=<你刚才设置的 ADMIN_TOKEN>
 
 **仍然必须做**：
 
-1. 反向代理终止 TLS（Nginx + Certbot），`BIND_ADDR=0.0.0.0` 直接对外是禁止的
+1. **反向代理终止 TLS**（Nginx + Certbot）。默认 `BIND_ADDR=0.0.0.0:17000` 方便单机起跑，但长期公网部署必须走反代 + HTTPS，不要让浏览器直连明文 17000 端口
 2. `ADMIN_TOKEN` 不要泄露到任何客户端、日志、聊天工具
 3. 多机部署时显式配 `WORKSPACE_COOKIE_SECRET`，不要让两台机器各自生成不一致的密钥
 4. 备份 `$NOVEL_DATA_DIR/`（已有内置 backups 自动备份，但不等于异地备份）
@@ -152,7 +152,7 @@ server {
     # ssl_certificate / ssl_certificate_key 由 certbot 写入
 
     location / {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:17000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -233,7 +233,7 @@ NovelForge/
 ├─ run.py                        启动入口（HOST/PORT/DEV_RELOAD）
 ├─ requirements.txt
 ├─ Dockerfile                    多阶段构建：Node 打 SPA + Python 运行时
-├─ docker-compose.yml            默认绑 127.0.0.1
+├─ docker-compose.yml            默认对外绑 0.0.0.0:17000
 ├─ migrate_to_workspaces.py      v2 → v3 一次性迁移
 ├─ .env.example                  所有环境变量样例
 ├─ preset_styles.json            预置文风（所有工作空间共享）
@@ -314,7 +314,7 @@ DEV_RELOAD=true LOG_LEVEL=DEBUG ADMIN_TOKEN=dev WORKSPACE_COOKIE_SECRET=dev pyth
 ```bash
 cd static/mobile-app
 npm ci
-npm run dev          # vite dev server，代理 /api → 127.0.0.1:8000
+npm run dev          # vite dev server，代理 /api → 127.0.0.1:17000
 npm run build        # 产物 dist/，由后端挂到 /m/static/
 ```
 

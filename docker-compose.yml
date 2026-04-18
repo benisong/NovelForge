@@ -6,8 +6,9 @@ services:
     container_name: novel-assistant
     restart: unless-stopped
     ports:
-      # 默认只绑定到本机回环；通过 BIND_ADDR=0.0.0.0 可开放到公网（请自行放在反代+HTTPS后面）
-      - "${BIND_ADDR:-127.0.0.1}:${PORT:-8000}:8000"
+      # 默认对外开放 17000 端口。只允许本机访问可设 BIND_ADDR=127.0.0.1。
+      # 公网部署请务必在前面放 Nginx+HTTPS。
+      - "${BIND_ADDR:-0.0.0.0}:${PORT:-17000}:17000"
     volumes:
       - novel-data:/app/data
     environment:
