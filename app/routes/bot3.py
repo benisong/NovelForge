@@ -48,25 +48,31 @@ async def save_bot3_prompts(data: dict):
 
 @router.post("/api/bot3/review")
 async def bot3_review(req: Bot3ReviewRequest):
-    system_prompt = req.custom_prompt.strip() if req.custom_prompt and req.custom_prompt.strip() else BOT3_SYSTEM
-    messages = [{"role": "system", "content": system_prompt}]
-    style_hint = ""
+    # system：核心审核规则（最稳）+ 文风评判附加（不切文风就不变）
+    # 稳定内容放 system，便于上游 prompt cache 命中 prefix
+    base_prompt = req.custom_prompt.strip() if req.custom_prompt and req.custom_prompt.strip() else BOT3_SYSTEM
+    system_parts = [base_prompt]
     style = _get_style_by_id(req.style_id) if req.style_id else None
     if style:
-        style_hint = (
-            f"\n\n【目标文风：{style['name']}】\n"
+        system_parts.append(
+            f"【目标文风：{style['name']}】\n"
             f"风格描述：{style.get('desc', '')}\n"
             f"参考示例片段：\n---\n{style['example']}\n---\n"
-            f"请在「风格一致性」维度重点评判内容是否贴合上述文风要求。\n"
+            f"请在「风格一致性」维度重点评判内容是否贴合上述文风要求。"
         )
+    messages = [{"role": "system", "content": "\n\n".join(system_parts)}]
+
+    # user：cache_breaker 在最前（故意让 user 前缀 miss，避免模型缓存返回旧评审），
+    #       之后按 稳定→可变→重要指令 排列；执行指令放末尾（高注意力）
     cache_breaker = f"[审核请求 #{uuid.uuid4().hex[:16]}]"
-    messages.append({"role": "user", "content": (
-        f"{cache_breaker}\n"
+    user_content = (
+        f"{cache_breaker}\n\n"
         f"【大纲要求】\n{req.outline}\n\n"
         f"【待审核的小说内容】\n{req.content}\n\n"
-        f"及格分数线：{req.config.pass_score}分"
-        f"{style_hint}\n\n请进行评审。"
-    )})
+        f"及格分数线：{req.config.pass_score}分\n\n"
+        f"请严格按系统提示词中的标签格式输出评审结果，不要输出 JSON，不要添加其他说明文字。"
+    )
+    messages.append({"role": "user", "content": user_content})
 
     try:
         result = await call_llm_full(req.config.bot3, messages)
