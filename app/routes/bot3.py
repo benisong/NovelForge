@@ -2,8 +2,7 @@
 
 import json
 import re
-import time
-import random
+import uuid
 import logging
 from fastapi import APIRouter
 
@@ -13,6 +12,7 @@ from ..styles import _get_style_by_id
 from ..llm import call_llm_full
 from ..config import BOT3_PROMPTS_FILE
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -59,7 +59,7 @@ async def bot3_review(req: Bot3ReviewRequest):
             f"参考示例片段：\n---\n{style['example']}\n---\n"
             f"请在「风格一致性」维度重点评判内容是否贴合上述文风要求。\n"
         )
-    cache_breaker = f"[审核请求 #{int(time.time())}-{random.randint(1000,9999)}]"
+    cache_breaker = f"[审核请求 #{uuid.uuid4().hex[:16]}]"
     messages.append({"role": "user", "content": (
         f"{cache_breaker}\n"
         f"【大纲要求】\n{req.outline}\n\n"
@@ -73,7 +73,8 @@ async def bot3_review(req: Bot3ReviewRequest):
     except Exception as e:
         return {"error": str(e)[:500], "retry_hint": True}
 
-    logging.info(f"[Bot3 原始回复] ({len(result)}字):\n{result[:1000]}")
+    logger.info("[Bot3] 回复长度 %d 字", len(result))
+    logger.debug("[Bot3 原始回复预览]\n%s", result[:1000])
 
     review = _parse_bot3_tags(result, req.config.pass_score)
     review["_raw_preview"] = result[:800]

@@ -1,15 +1,20 @@
 """项目 CRUD + 导出"""
 
 import json
+import logging
 import re
 import shutil
 import time
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from ..models import SaveProjectRequest
 from ..config import DATA_DIR, STYLES_FILE
 from ..styles import _load_styles
+
+logger = logging.getLogger(__name__)
 
 
 class SaveChapterRequest(BaseModel):
@@ -22,9 +27,47 @@ class SaveChapterRequest(BaseModel):
 router = APIRouter()
 
 
-def _project_path(pid: str):
-    safe = re.sub(r"[^\w\-]", "_", pid)
-    return DATA_DIR / f"{safe}.json"
+_SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_\-]")
+_SAFE_NAME_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+
+_DATA_ROOT = DATA_DIR.resolve()
+_CHAPTERS_ROOT = (_DATA_ROOT / "chapters").resolve()
+
+
+def _safe_id(pid: str) -> str:
+    """把 project_id 规范化成只包含字母数字下划线和连字符。"""
+    safe = _SAFE_ID_RE.sub("_", pid or "").strip("._")
+    if not safe:
+        raise HTTPException(400, "无效的项目ID")
+    return safe[:128]
+
+
+def _resolve_within(root: Path, candidate: Path) -> Path:
+    """确保 candidate 在 root 目录内，防止路径穿越。"""
+    try:
+        resolved = candidate.resolve()
+        resolved.relative_to(root)
+    except (OSError, ValueError):
+        raise HTTPException(400, "非法的路径")
+    return resolved
+
+
+def _project_path(pid: str) -> Path:
+    safe = _safe_id(pid)
+    return _resolve_within(_DATA_ROOT, _DATA_ROOT / f"{safe}.json")
+
+
+def _chapters_dir(project_id: str) -> Path:
+    safe = _safe_id(project_id)
+    _CHAPTERS_ROOT.mkdir(parents=True, exist_ok=True)
+    return _resolve_within(_CHAPTERS_ROOT, _CHAPTERS_ROOT / safe)
+
+
+def _safe_filename(name: str, fallback: str = "untitled") -> str:
+    cleaned = _SAFE_NAME_RE.sub("_", name or "").strip(" .")
+    if not cleaned:
+        cleaned = fallback
+    return cleaned[:128]
 
 
 @router.get("/api/projects")
@@ -32,18 +75,23 @@ async def list_projects():
     """列出所有已保存的项目"""
     projects = []
     for f in sorted(DATA_DIR.glob("*.json")):
+        if f.name.startswith("_"):
+            continue
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
-            projects.append(
-                {
-                    "id": data.get("project_id", f.stem),
-                    "name": data.get("name", f.stem),
-                    "chapters": len(data.get("chapters", [])),
-                    "updated": data.get("updated", ""),
-                }
-            )
-        except Exception:
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning("读取项目文件失败 %s: %s", f.name, e)
             continue
+        if not isinstance(data, dict):
+            continue
+        projects.append(
+            {
+                "id": data.get("project_id", f.stem),
+                "name": data.get("name", f.stem),
+                "chapters": len(data.get("chapters", []) or []),
+                "updated": data.get("updated", ""),
+            }
+        )
     return {"projects": projects}
 
 
@@ -57,12 +105,15 @@ async def latest_project():
             continue
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
-            updated = data.get("updated", "")
-            if updated > latest_time:
-                latest_time = updated
-                latest_id = data.get("project_id", f.stem)
-        except Exception:
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning("读取项目文件失败 %s: %s", f.name, e)
             continue
+        if not isinstance(data, dict):
+            continue
+        updated = data.get("updated", "")
+        if updated > latest_time:
+            latest_time = updated
+            latest_id = data.get("project_id", f.stem)
     return {"project_id": latest_id}
 
 
@@ -73,30 +124,33 @@ async def save_project(req: SaveProjectRequest):
     data["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
     path = _project_path(req.project_id)
 
-    # ==== 自动备份机制开始 ====
+    # ==== 自动备份机制 ====
     if path.exists():
         backup_dir = DATA_DIR / "backups"
         backup_dir.mkdir(parents=True, exist_ok=True)
-        # 生成备份文件名，保留时间戳，例如: proj_abc123_20260329_103000.json
         timestamp = time.strftime("%Y%m%d_%H%M%S")
-        safe_pid = re.sub(r"[^\w\-]", "_", req.project_id)
-        backup_filename = f"{safe_pid}_{timestamp}.json"
-        backup_path = backup_dir / backup_filename
+        safe_pid = _safe_id(req.project_id)
+        backup_path = backup_dir / f"{safe_pid}_{timestamp}.json"
 
         try:
             shutil.copy2(path, backup_path)
-
-            # 自动清理旧备份，只保留最近10个版本的该项目
-            all_backups = sorted(backup_dir.glob(f"{safe_pid}_*.json"))
+            all_backups = sorted(
+                backup_dir.glob(f"{safe_pid}_*.json"),
+                key=lambda p: p.stat().st_mtime,
+            )
             if len(all_backups) > 10:
                 for old_backup in all_backups[:-10]:
-                    old_backup.unlink(missing_ok=True)
-        except Exception as e:
-            print(f"自动备份失败: {e}")
-    # ==== 自动备份机制结束 ====
+                    try:
+                        old_backup.unlink()
+                    except FileNotFoundError:
+                        pass
+                    except OSError as e:
+                        logger.warning("删除旧备份失败 %s: %s", old_backup.name, e)
+        except OSError as e:
+            logger.warning("自动备份失败: %s", e)
 
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    return {"ok": True, "path": str(path)}
+    return {"ok": True, "path": str(path.relative_to(_DATA_ROOT))}
 
 
 @router.get("/api/projects/{project_id}")
@@ -105,14 +159,11 @@ async def load_project(project_id: str):
     path = _project_path(project_id)
     if not path.exists():
         raise HTTPException(404, "项目不存在")
-    data = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raise HTTPException(500, "项目文件损坏或无法读取")
     return data
-
-
-def _chapters_dir(project_id: str):
-    """获取项目章节文件夹路径"""
-    safe = re.sub(r"[^\w\-]", "_", project_id)
-    return DATA_DIR / "chapters" / safe
 
 
 @router.post("/api/projects/save-chapter")
@@ -120,11 +171,13 @@ async def save_chapter(req: SaveChapterRequest):
     """保存正式章节文件"""
     ch_dir = _chapters_dir(req.project_id)
     ch_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = re.sub(r'[\\/:*?"<>|]', "_", req.project_name)
+    safe_name = _safe_filename(req.project_name)
+    if req.chapter_num < 0 or req.chapter_num > 100000:
+        raise HTTPException(400, "章节序号超出范围")
     filename = f"{safe_name}_正式_第{req.chapter_num}章.txt"
-    filepath = ch_dir / filename
+    filepath = _resolve_within(ch_dir, ch_dir / filename)
     filepath.write_text(req.content, encoding="utf-8")
-    return {"ok": True, "filename": filename, "path": str(filepath)}
+    return {"ok": True, "filename": filename, "path": str(filepath.relative_to(_DATA_ROOT))}
 
 
 @router.get("/api/projects/{project_id}/chapters")
@@ -142,11 +195,15 @@ async def delete_project(project_id: str, delete_chapters: bool = False):
     """删除一个项目，可选删除章节文件"""
     path = _project_path(project_id)
     if path.exists():
-        path.unlink()
+        try:
+            path.unlink()
+        except OSError as e:
+            logger.error("删除项目文件失败 %s: %s", path.name, e)
+            raise HTTPException(500, "删除失败")
     if delete_chapters:
         ch_dir = _chapters_dir(project_id)
         if ch_dir.exists():
-            shutil.rmtree(ch_dir)
+            shutil.rmtree(ch_dir, ignore_errors=True)
     return {"ok": True}
 
 
@@ -156,11 +213,14 @@ async def export_project(project_id: str):
     path = _project_path(project_id)
     if not path.exists():
         raise HTTPException(404, "项目不存在")
-    data = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raise HTTPException(500, "项目文件损坏或无法读取")
     lines = [f"# {data.get('name', project_id)}\n"]
-    for i, ch in enumerate(data.get("chapters", []), 1):
+    for i, ch in enumerate(data.get("chapters", []) or [], 1):
         lines.append(f"\n## 第{i}章\n")
-        lines.append(ch.get("content", ""))
+        lines.append(ch.get("content", "") if isinstance(ch, dict) else "")
         lines.append("")
     text = "\n".join(lines)
     return {"text": text, "word_count": len(text)}
