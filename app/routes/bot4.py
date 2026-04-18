@@ -1,7 +1,7 @@
-"""Bot4 总结系统：小总结（缩略+摘要）+ 大总结 + 记忆压缩"""
+"""Bot4 总结系统：小总结（缩略+摘要）+ 大总结 + 记忆压缩（per-workspace）"""
 
 import json
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from ..models import (
@@ -13,14 +13,18 @@ from ..prompts import (
     BOT4_BIG_SUMMARY_SYSTEM, COMPRESS_SYSTEM,
 )
 from ..llm import stream_llm
+from ..workspace import require_workspace
 
-router = APIRouter()
+router = APIRouter(
+    prefix="/api/w/{workspace}",
+    dependencies=[Depends(require_workspace)],
+)
 
 
 # ---------- 小总结：缩略版原文（Bot4主模型）----------
 
-@router.post("/api/bot4/summarize")
-async def bot4_summarize(req: Bot4SummarizeRequest):
+@router.post("/bot4/summarize")
+async def bot4_summarize(workspace: str, req: Bot4SummarizeRequest):
     """生成缩略版原文"""
     messages = [{"role": "system", "content": BOT4_CONDENSED_SYSTEM}]
     prompt = ""
@@ -43,8 +47,8 @@ async def bot4_summarize(req: Bot4SummarizeRequest):
 
 # ---------- 小总结：摘要（Bot4廉价模型）----------
 
-@router.post("/api/bot4/abstract")
-async def bot4_abstract(req: Bot4AbstractRequest):
+@router.post("/bot4/abstract")
+async def bot4_abstract(workspace: str, req: Bot4AbstractRequest):
     """从缩略版原文生成结构化摘要"""
     # 复用bot4的base_url和api_key，但model可能不同
     bot4_cfg = req.config.bot4
@@ -77,8 +81,8 @@ async def bot4_abstract(req: Bot4AbstractRequest):
 
 # ---------- 大总结 ----------
 
-@router.post("/api/bot4/big-summarize")
-async def bot4_big_summarize(req: BigSummarizeRequest):
+@router.post("/bot4/big-summarize")
+async def bot4_big_summarize(workspace: str, req: BigSummarizeRequest):
     """汇总多个小总结为全局记忆"""
     parts = []
     total = len(req.summaries)
@@ -116,8 +120,8 @@ async def bot4_big_summarize(req: BigSummarizeRequest):
 
 # ---------- 记忆压缩（保留）----------
 
-@router.post("/api/compress-summary")
-async def compress_summary(req: CompressSummaryRequest):
+@router.post("/compress-summary")
+async def compress_summary(workspace: str, req: CompressSummaryRequest):
     messages = [
         {"role": "system", "content": COMPRESS_SYSTEM},
         {"role": "user", "content": (

@@ -8,7 +8,7 @@ const BUILTIN_STYLE_IDS=new Set(['literary','wuxia','xuanhuan','suspense','urban
 
 async function loadStyles(){
   try{
-    const r=await fetch('/api/styles');const d=await r.json();
+    const r=await fetch(apiUrl('/api/styles'));const d=await r.json();
     allStyles=d.styles||[];
     if(d.default_word_count) $('wordCountInput').value=d.default_word_count;
     renderStyleGrid();
@@ -126,7 +126,7 @@ async function saveStyleFromModal(){
 
 async function _pushStylesToServer(){
   try{
-    await fetch('/api/styles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({styles:allStyles,default_word_count:getWordCount()})});
+    await fetch(apiUrl('/api/styles'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({styles:allStyles,default_word_count:getWordCount()})});
   }catch(e){console.warn('保存文风失败',e);}
 }
 

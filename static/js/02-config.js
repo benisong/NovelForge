@@ -39,7 +39,7 @@ async function fetchModels(bot){
   const url=$(srcBot+'_url').value,key=$(srcBot+'_key').value;
   if(!url||!key){alert('请先填写API地址和密钥');return;}
   const sel=$(bot+'_model');sel.innerHTML='<option value="">获取中...</option>';
-  try{const r=await fetch('/api/models',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base_url:url,api_key:key})});const d=await r.json();if(d.error)throw new Error(d.error);sel.innerHTML='';if(!d.models||!d.models.length){sel.innerHTML='<option value="">无可用模型</option>';return;}d.models.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o);});addLog(bot,`获取到 ${d.models.length} 个模型`);autoSaveConfigAfterModelFetch();}
+  try{const r=await fetch(apiUrl('/api/models'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base_url:url,api_key:key})});const d=await r.json();if(d.error)throw new Error(d.error);sel.innerHTML='';if(!d.models||!d.models.length){sel.innerHTML='<option value="">无可用模型</option>';return;}d.models.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o);});addLog(bot,`获取到 ${d.models.length} 个模型`);autoSaveConfigAfterModelFetch();}
   catch(e){sel.innerHTML='<option value="">获取失败</option>';addLog('error',`${bot}获取模型失败: ${e.message}`);}
 }
 
@@ -47,7 +47,8 @@ async function fetchModels(bot){
 // SSE读取 - 不自动重试，出错直接抛
 // ============================================================
 async function readSSE(url,body,onChunk,signal){
-  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});
+  const r=await fetch(apiUrl(url),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});
+  if(r.status===401){const back=encodeURIComponent(location.pathname+location.search);location.href='/w/'+(window.WORKSPACE||'')+'/login?next='+back;throw new Error('未登录');}
   if(!r.ok){const t=await r.text();throw new Error(`HTTP ${r.status}: ${t.slice(0,200)}`);}
   const reader=r.body.getReader(),dec=new TextDecoder();
   let buf='',full='';
@@ -132,13 +133,13 @@ async function autoSaveConfigAfterModelFetch(){
 
 async function pushConfigsToServer(){
   try{
-    await fetch('/api/configs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({configs:allConfigProfiles})});
+    await fetch(apiUrl('/api/configs'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({configs:allConfigProfiles})});
   }catch(e){console.warn('保存配置失败',e);}
 }
 
 async function loadConfigsFromServer(){
   try{
-    const r=await fetch('/api/configs');const d=await r.json();
+    const r=await fetch(apiUrl('/api/configs'));const d=await r.json();
     allConfigProfiles=d.configs||[];
     renderConfigProfiles();
     // 自动加载第一个（或上次使用的）

@@ -25,7 +25,7 @@ async function saveChapterFile(content, chapterNum){
   const projectName=$('projectName').value.trim()||'未命名项目';
   const pid=currentProjectId||'unknown';
   try{
-    const r=await fetch('/api/projects/save-chapter',{
+    const r=await fetch(apiUrl('/api/projects/save-chapter'),{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({project_id:pid, project_name:projectName, chapter_num:chapterNum, content})
@@ -120,7 +120,7 @@ async function runPipeline(startAttempt, prevContent, config, context){
 
     let review;
     try{
-      const r=await fetch('/api/bot3/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:currentContent,outline:S.currentOutline,config,style_id:getStyleId(),custom_prompt:getBot3CustomPrompt()}),signal:S.abortCtrl.signal});
+      const r=await fetch(apiUrl('/api/bot3/review'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:currentContent,outline:S.currentOutline,config,style_id:getStyleId(),custom_prompt:getBot3CustomPrompt()}),signal:S.abortCtrl.signal});
       review=await r.json();
       if(review.error&&!review.scores)throw new Error(review.error);
     }catch(e){
@@ -277,7 +277,7 @@ async function retryBot3AndContinue(ps){
 
   let review;
   try{
-    const r=await fetch('/api/bot3/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:ps.currentContent,outline:S.currentOutline,config:ps.config,style_id:getStyleId(),custom_prompt:getBot3CustomPrompt()}),signal:S.abortCtrl.signal});
+    const r=await fetch(apiUrl('/api/bot3/review'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:ps.currentContent,outline:S.currentOutline,config:ps.config,style_id:getStyleId(),custom_prompt:getBot3CustomPrompt()}),signal:S.abortCtrl.signal});
     review=await r.json();if(review.error&&!review.scores)throw new Error(review.error);
   }catch(e){
     if(e.name==='AbortError'){addLog('system','已停止');resetPipeline();return;}

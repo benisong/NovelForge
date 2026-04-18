@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NovelForge · 管理</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+body { padding:24px; overflow:auto; }
+.wrap { max-width:920px; margin:0 auto; }
+.head { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
+.head .logo { color:var(--accent-purple); font-weight:700; font-size:20px; letter-spacing:1px; }
+.head .back { color:var(--text-muted); text-decoration:none; font-size:13px; }
+.head .back:hover { color:var(--accent-blue); }
+
+.section { background:var(--bg-secondary); border:1px solid var(--border); border-radius:10px; padding:20px; margin-bottom:18px; }
+.section h2 { font-size:14px; color:var(--text-secondary); margin-bottom:14px; text-transform:uppercase; letter-spacing:1px; }
+
+.token-bar { display:flex; gap:8px; align-items:center; }
+.token-bar input { flex:1; padding:8px 12px; background:var(--bg-tertiary); border:1px solid var(--border); border-radius:6px; color:var(--text-primary); font-family:monospace; font-size:13px; }
+.token-bar button { padding:8px 16px; background:var(--accent-blue); color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:13px; }
+
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th, td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--border); }
+th { color:var(--text-muted); font-size:11px; text-transform:uppercase; letter-spacing:1px; font-weight:normal; }
+td .slug { font-family:monospace; color:var(--text-muted); }
+td .actions button { background:var(--bg-tertiary); border:1px solid var(--border); padding:4px 10px; border-radius:4px; color:var(--text-secondary); cursor:pointer; font-size:12px; margin-right:4px; }
+td .actions button:hover { border-color:var(--accent-blue); color:var(--text-primary); }
+td .actions .danger:hover { border-color:var(--accent-red); color:var(--accent-red); }
+
+.create-grid { display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:8px; align-items:end; }
+.create-grid label { display:block; font-size:11px; color:var(--text-muted); margin-bottom:4px; }
+.create-grid input { width:100%; padding:8px 10px; background:var(--bg-tertiary); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:13px; }
+.create-grid button { padding:8px 18px; background:var(--accent-green); color:#fff; border:none; border-radius:5px; cursor:pointer; font-size:13px; font-weight:600; }
+.hint { font-size:11px; color:var(--text-muted); margin-top:6px; }
+
+.toast { position:fixed; bottom:24px; right:24px; background:var(--bg-secondary); border:1px solid var(--border); padding:10px 16px; border-radius:6px; font-size:13px; box-shadow:0 4px 12px rgba(0,0,0,.3); display:none; }
+.toast.show { display:block; }
+.toast.err { border-color:var(--accent-red); color:var(--accent-red); }
+.toast.ok { border-color:var(--accent-green); color:var(--accent-green); }
+
+.empty { text-align:center; color:var(--text-muted); padding:24px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div class="logo">&#9881; NovelForge 管理</div>
+    <a class="back" href="/">&larr; 返回首页</a>
+  </div>
+
+  <div class="section">
+    <h2>管理员令牌</h2>
+    <div class="token-bar">
+      <input id="token" type="password" placeholder="输入 ADMIN_TOKEN（来自服务器 .env）">
+      <button onclick="loadList()">登录管理</button>
+    </div>
+    <div class="hint">令牌不会保存在浏览器；刷新需重新输入。</div>
+  </div>
+
+  <div class="section" id="listSection" style="display:none">
+    <h2>工作空间列表</h2>
+    <table>
+      <thead>
+        <tr><th>名称</th><th>Slug</th><th>创建时间</th><th>最近活跃</th><th style="width:200px">操作</th></tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="section" id="createSection" style="display:none">
+    <h2>新建工作空间</h2>
+    <div class="create-grid">
+      <div>
+        <label>Slug（URL 用，小写字母/数字/横线）</label>
+        <input id="newSlug" placeholder="alice">
+      </div>
+      <div>
+        <label>显示名称</label>
+        <input id="newName" placeholder="Alice 的小说工坊">
+      </div>
+      <div>
+        <label>初始密码</label>
+        <input id="newPassword" type="text" placeholder="≥4 字符">
+      </div>
+      <button onclick="createWs()">创建</button>
+    </div>
+    <div class="hint">创建后将朋友分享 <code>https://your-domain/w/&lt;slug&gt;/</code> 与密码即可。</div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const TOKEN_PRESET = {{ADMIN_TOKEN_JSON}};
+if (TOKEN_PRESET) {
+  document.getElementById('token').value = TOKEN_PRESET;
+  loadList();
+}
+
+function token() { return document.getElementById('token').value.trim(); }
+function toast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (type || '');
+  setTimeout(() => t.className = 'toast', 2400);
+}
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function loadList() {
+  const t = token();
+  if (!t) { toast('请先填写管理员令牌', 'err'); return; }
+  const r = await fetch('/api/admin/workspaces?token=' + encodeURIComponent(t));
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    toast('鉴权失败：' + (j.detail || r.status), 'err');
+    return;
+  }
+  const j = await r.json();
+  const tbody = document.getElementById('tbody');
+  if (!j.workspaces || j.workspaces.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">还没有工作空间，下面创建一个</td></tr>';
+  } else {
+    tbody.innerHTML = j.workspaces.map(w =>
+      '<tr>' +
+        '<td>' + escapeHtml(w.name) + '</td>' +
+        '<td class="slug">' + escapeHtml(w.slug) + '</td>' +
+        '<td>' + escapeHtml(w.created || '') + '</td>' +
+        '<td>' + escapeHtml(w.last_active || '从未') + '</td>' +
+        '<td class="actions">' +
+          '<button onclick="renameWs(\'' + w.slug + '\')">改名</button>' +
+          '<button onclick="passwordWs(\'' + w.slug + '\')">改密码</button>' +
+          '<button class="danger" onclick="deleteWs(\'' + w.slug + '\')">删除</button>' +
+        '</td>' +
+      '</tr>'
+    ).join('');
+  }
+  document.getElementById('listSection').style.display = 'block';
+  document.getElementById('createSection').style.display = 'block';
+}
+
+async function createWs() {
+  const slug = document.getElementById('newSlug').value.trim();
+  const name = document.getElementById('newName').value.trim();
+  const password = document.getElementById('newPassword').value;
+  const r = await fetch('/api/admin/workspaces?token=' + encodeURIComponent(token()), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug, name, password }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { toast('创建失败：' + (j.detail || r.status), 'err'); return; }
+  toast('已创建：' + slug, 'ok');
+  document.getElementById('newSlug').value = '';
+  document.getElementById('newName').value = '';
+  document.getElementById('newPassword').value = '';
+  loadList();
+}
+
+async function renameWs(slug) {
+  const name = prompt('新的显示名称：', slug);
+  if (!name) return;
+  const r = await fetch('/api/admin/workspaces/' + encodeURIComponent(slug) + '/rename?token=' + encodeURIComponent(token()), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { toast('改名失败：' + (j.detail || r.status), 'err'); return; }
+  toast('已改名', 'ok');
+  loadList();
+}
+
+async function passwordWs(slug) {
+  const password = prompt('新密码（≥4 字符）：');
+  if (!password) return;
+  const r = await fetch('/api/admin/workspaces/' + encodeURIComponent(slug) + '/password?token=' + encodeURIComponent(token()), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { toast('改密码失败：' + (j.detail || r.status), 'err'); return; }
+  toast('密码已更新', 'ok');
+}
+
+async function deleteWs(slug) {
+  if (!confirm('确认删除工作空间 "' + slug + '"？\n该工作空间的所有项目数据都会被永久删除！')) return;
+  if (!confirm('再次确认：删除 "' + slug + '" 不可恢复')) return;
+  const r = await fetch('/api/admin/workspaces/' + encodeURIComponent(slug) + '?token=' + encodeURIComponent(token()), {
+    method: 'DELETE',
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { toast('删除失败：' + (j.detail || r.status), 'err'); return; }
+  toast('已删除', 'ok');
+  loadList();
+}
+</script>
+</body>
+</html>

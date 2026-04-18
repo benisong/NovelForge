@@ -24,7 +24,7 @@ async function manualReReview(){
 
   let review;
   try{
-    const r=await fetch('/api/bot3/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    const r=await fetch(apiUrl('/api/bot3/review'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       content,outline:S.currentOutline,config,style_id:getStyleId(),custom_prompt:getBot3CustomPrompt()
     })});
     review=await r.json();
@@ -51,7 +51,7 @@ async function manualReReview(){
 // ---- Bot3 提示词弹窗管理 ----
 async function loadBot3Prompts(){
   try{
-    const r=await fetch('/api/bot3-prompts');const d=await r.json();
+    const r=await fetch(apiUrl('/api/bot3-prompts'));const d=await r.json();
     bot3CustomPrompts=d.prompts||[];
     bot3DefaultPrompt=d.default_prompt||'';
     _updateBot3PromptLabel();
@@ -165,6 +165,6 @@ async function deleteBot3Prompt(){
 
 async function _pushBot3Prompts(){
   try{
-    await fetch('/api/bot3-prompts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompts:bot3CustomPrompts})});
+    await fetch(apiUrl('/api/bot3-prompts'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompts:bot3CustomPrompts})});
   }catch(e){console.warn('保存Bot3提示词失败',e);}
 }

@@ -66,7 +66,7 @@ async function saveProject(silent){
     small_summaries:S.smallSummaries||[],
     big_summaries:S.bigSummaries||[],
   };
-  try{const r=await fetch('/api/projects/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(d.ok){localStorage.setItem('nf_last_project',currentProjectId);if(!silent){addLog('system',`项目「${name}」已保存`);}loadProjectList();}else{if(!silent)addLog('error','保存失败');}}
+  try{const r=await fetch(apiUrl('/api/projects/save'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(d.ok){localStorage.setItem('nf_last_project',currentProjectId);if(!silent){addLog('system',`项目「${name}」已保存`);}loadProjectList();}else{if(!silent)addLog('error','保存失败');}}
   catch(e){if(!silent)addLog('error',`保存失败: ${e.message}`);}
 }
 
@@ -112,7 +112,7 @@ setInterval(()=>{
 },60000);
 
 async function loadProjectList(){
-  try{const r=await fetch('/api/projects');const d=await r.json();const el=$('projectList');el.innerHTML='';
+  try{const r=await fetch(apiUrl('/api/projects'));const d=await r.json();const el=$('projectList');el.innerHTML='';
     // 更新菜单按钮标签
     $('projectMenuLabel').textContent=currentProjectId?($('projectName').value||''):'';
 
@@ -129,7 +129,7 @@ async function loadProjectList(){
 }
 
 async function loadProject(pid){
-  try{const r=await fetch(`/api/projects/${pid}`);if(!r.ok)throw new Error('加载失败');const d=await r.json();
+  try{const r=await fetch(apiUrl(`/api/projects/${pid}`));if(!r.ok)throw new Error('加载失败');const d=await r.json();
     currentProjectId=d.project_id;
     $('projectName').value=d.name||'';
     S.chatHistory=d.chat_history||[];
@@ -247,7 +247,7 @@ async function _deleteProjectWithChapterCheck(pid, name, isCurrent){
   let hasChapters=false;
   let chapterFiles=[];
   try{
-    const r=await fetch(`/api/projects/${pid}/chapters`);
+    const r=await fetch(apiUrl(`/api/projects/${pid}/chapters`));
     const d=await r.json();
     chapterFiles=d.files||[];
     hasChapters=chapterFiles.length>0;
@@ -261,7 +261,7 @@ async function _deleteProjectWithChapterCheck(pid, name, isCurrent){
   }
 
   try{
-    await fetch(`/api/projects/${pid}?delete_chapters=${deleteChapters}`,{method:'DELETE'});
+    await fetch(apiUrl(`/api/projects/${pid}?delete_chapters=${deleteChapters}`),{method:'DELETE'});
     addLog('system',`已删除项目「${name}」${deleteChapters?'（含章节文件）':''}`);
     if(isCurrent||currentProjectId===pid){currentProjectId=null;localStorage.removeItem('nf_last_project');resetProjectState();}
     loadProjectList();
@@ -314,7 +314,7 @@ function resetProjectState(){
 async function exportProject(){
   if(!currentProjectId&&S.chapters.length===0){alert('没有可导出的内容');return;}
   await saveProject();if(!currentProjectId)return;
-  try{const r=await fetch(`/api/projects/${currentProjectId}/export`,{method:'POST'});const d=await r.json();
+  try{const r=await fetch(apiUrl(`/api/projects/${currentProjectId}/export`),{method:'POST'});const d=await r.json();
     const blob=new Blob([d.text],{type:'text/plain;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=($('projectName').value||'novel')+'.txt';a.click();URL.revokeObjectURL(a.href);
     addLog('system',`已导出，共${d.word_count}字`);
   }catch(e){addLog('error',`导出失败: ${e.message}`);}

@@ -1,44 +1,49 @@
-"""Bot 配置档案 CRUD"""
+"""Bot 配置档案 CRUD（per-workspace）"""
 
 import json
-from fastapi import APIRouter
 
+from fastapi import APIRouter, Depends
+
+from ..config import config_file
 from ..models import SaveConfigRequest
-from ..config import CONFIG_FILE
+from ..workspace import require_workspace
 
-router = APIRouter()
+router = APIRouter(
+    prefix="/api/w/{workspace}",
+    dependencies=[Depends(require_workspace)],
+)
 
 
-def _read_configs() -> list[dict]:
-    if CONFIG_FILE.exists():
+def _read_configs(workspace: str) -> list[dict]:
+    cf = config_file(workspace)
+    if cf.exists():
         try:
-            return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        except Exception:
+            return json.loads(cf.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
             pass
     return []
 
 
-def _write_configs(configs: list[dict]):
-    CONFIG_FILE.write_text(json.dumps(configs, ensure_ascii=False, indent=2), encoding="utf-8")
+def _write_configs(workspace: str, configs: list[dict]) -> None:
+    cf = config_file(workspace)
+    cf.parent.mkdir(parents=True, exist_ok=True)
+    cf.write_text(json.dumps(configs, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-@router.get("/api/configs")
-async def get_configs():
-    """获取所有已保存的Bot配置"""
-    return {"configs": _read_configs()}
+@router.get("/configs")
+async def get_configs(workspace: str):
+    return {"configs": _read_configs(workspace)}
 
 
-@router.post("/api/configs")
-async def save_configs(req: SaveConfigRequest):
-    """保存全部Bot配置列表"""
-    _write_configs(req.configs)
+@router.post("/configs")
+async def save_configs(workspace: str, req: SaveConfigRequest):
+    _write_configs(workspace, req.configs)
     return {"ok": True}
 
 
-@router.delete("/api/configs/{config_id}")
-async def delete_config(config_id: str):
-    """删除某个配置"""
-    configs = _read_configs()
+@router.delete("/configs/{config_id}")
+async def delete_config(workspace: str, config_id: str):
+    configs = _read_configs(workspace)
     configs = [c for c in configs if c.get("id") != config_id]
-    _write_configs(configs)
+    _write_configs(workspace, configs)
     return {"ok": True}

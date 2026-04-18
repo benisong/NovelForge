@@ -1,19 +1,23 @@
-"""Bot1 对话 + 模型获取"""
+"""Bot1 对话 + 模型获取（per-workspace）"""
 
 import json
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
 
 from ..models import Bot1ChatRequest, FetchModelsRequest
 from ..prompts import BOT1_SYSTEM
 from ..llm import stream_llm
+from ..workspace import require_workspace
 
-router = APIRouter()
+router = APIRouter(
+    prefix="/api/w/{workspace}",
+    dependencies=[Depends(require_workspace)],
+)
 
 
-@router.post("/api/models")
-async def fetch_models(req: FetchModelsRequest):
+@router.post("/models")
+async def fetch_models(workspace: str, req: FetchModelsRequest):
     """获取可用模型列表"""
     base_url = req.base_url.rstrip("/")
     url = f"{base_url}/models"
@@ -43,8 +47,8 @@ async def fetch_models(req: FetchModelsRequest):
         return JSONResponse(status_code=500, content={"error": f"返回的不是有效JSON: {resp.text[:200]}"})
 
 
-@router.post("/api/bot1/chat")
-async def bot1_chat(req: Bot1ChatRequest):
+@router.post("/bot1/chat")
+async def bot1_chat(workspace: str, req: Bot1ChatRequest):
     # 按注意力分布组装：开头放大总结+摘要（高注意力），末尾是用户消息（高注意力）
     system_content = BOT1_SYSTEM
     if req.context:

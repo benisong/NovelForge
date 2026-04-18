@@ -47,7 +47,7 @@ function initTheme() {
   setTimeout(initStyleDragDrop, 0);
   // 自动加载最近更新的项目（从服务端获取，不依赖localStorage）
   try{
-    const r=await fetch('/api/projects/latest');
+    const r=await fetch(apiUrl('/api/projects/latest'));
     if(r.ok){
       const d=await r.json();
       if(d.project_id) await loadProject(d.project_id);

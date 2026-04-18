@@ -11,7 +11,13 @@
 <div class="title-bar">
   <span class="logo">&#9997; NovelForge</span>
   <span class="sep">|</span>
-  
+
+  <!-- 当前工作空间 + 切换 -->
+  <span style="font-size:12px;color:var(--text-muted)">工作空间:</span>
+  <span id="wsName" style="color:var(--accent-teal);font-size:12px;font-weight:600"></span>
+  <a href="/" class="menu-btn" style="text-decoration:none" title="切换到其他工作空间">&#8635; 切换</a>
+  <span class="sep">|</span>
+
   <!-- 主题切换按钮 -->
   <button class="menu-btn" onclick="toggleTheme()" id="themeToggleBtn" title="切换白天/夜间模式">&#127769; 夜间模式</button>
   <span class="sep">|</span>
@@ -373,6 +379,7 @@
   </div>
 </div>
 
+<script src="/static/js/00-api.js"></script>
 <script src="/static/js/01-state.js"></script>
 <script src="/static/js/02-config.js"></script>
 <script src="/static/js/03-chat.js"></script>

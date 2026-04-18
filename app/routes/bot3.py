@@ -1,58 +1,62 @@
-"""Bot3 审核 + 自定义提示词"""
+"""Bot3 审核 + 自定义提示词（per-workspace）"""
 
 import json
 import re
 import uuid
 import logging
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from ..models import Bot3ReviewRequest
 from ..prompts import BOT3_SYSTEM
 from ..styles import _get_style_by_id
 from ..llm import call_llm_full
-from ..config import BOT3_PROMPTS_FILE
+from ..config import bot3_prompts_file
+from ..workspace import require_workspace
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(
+    prefix="/api/w/{workspace}",
+    dependencies=[Depends(require_workspace)],
+)
 
 
 # ---------- Bot3 自定义提示词 ----------
 
-def _load_bot3_prompts() -> list[dict]:
-    if BOT3_PROMPTS_FILE.exists():
+def _load_bot3_prompts(workspace: str) -> list[dict]:
+    pf = bot3_prompts_file(workspace)
+    if pf.exists():
         try:
-            return json.loads(BOT3_PROMPTS_FILE.read_text(encoding="utf-8"))
-        except Exception:
+            return json.loads(pf.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
             pass
     return []
 
 
-def _save_bot3_prompts(prompts: list[dict]):
-    BOT3_PROMPTS_FILE.write_text(json.dumps(prompts, ensure_ascii=False, indent=2), encoding="utf-8")
+def _save_bot3_prompts(workspace: str, prompts: list[dict]) -> None:
+    pf = bot3_prompts_file(workspace)
+    pf.parent.mkdir(parents=True, exist_ok=True)
+    pf.write_text(json.dumps(prompts, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-@router.get("/api/bot3-prompts")
-async def get_bot3_prompts():
-    """获取所有Bot3自定义提示词 + 默认提示词"""
-    return {"prompts": _load_bot3_prompts(), "default_prompt": BOT3_SYSTEM}
+@router.get("/bot3-prompts")
+async def get_bot3_prompts(workspace: str):
+    """获取该工作空间所有 Bot3 自定义提示词 + 默认提示词"""
+    return {"prompts": _load_bot3_prompts(workspace), "default_prompt": BOT3_SYSTEM}
 
 
-@router.post("/api/bot3-prompts")
-async def save_bot3_prompts(data: dict):
-    """保存Bot3自定义提示词列表"""
-    _save_bot3_prompts(data.get("prompts", []))
+@router.post("/bot3-prompts")
+async def save_bot3_prompts(workspace: str, data: dict):
+    _save_bot3_prompts(workspace, data.get("prompts", []))
     return {"ok": True}
 
 
 # ---------- Bot3 审核 ----------
 
-@router.post("/api/bot3/review")
-async def bot3_review(req: Bot3ReviewRequest):
-    # system：核心审核规则（最稳）+ 文风评判附加（不切文风就不变）
-    # 稳定内容放 system，便于上游 prompt cache 命中 prefix
+@router.post("/bot3/review")
+async def bot3_review(workspace: str, req: Bot3ReviewRequest):
     base_prompt = req.custom_prompt.strip() if req.custom_prompt and req.custom_prompt.strip() else BOT3_SYSTEM
     system_parts = [base_prompt]
-    style = _get_style_by_id(req.style_id) if req.style_id else None
+    style = _get_style_by_id(workspace, req.style_id) if req.style_id else None
     if style:
         system_parts.append(
             f"【目标文风：{style['name']}】\n"

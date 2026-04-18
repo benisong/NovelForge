@@ -1,18 +1,22 @@
-"""Bot2 创作/重写"""
+"""Bot2 创作/重写（per-workspace）"""
 
 import json
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from ..models import Bot2WriteRequest, Bot2RewriteRequest
 from ..prompts import BOT2_SYSTEM
 from ..styles import _get_style_by_id
 from ..llm import stream_llm
+from ..workspace import require_workspace
 
-router = APIRouter()
+router = APIRouter(
+    prefix="/api/w/{workspace}",
+    dependencies=[Depends(require_workspace)],
+)
 
 
-def _build_bot2_system(style_id: str = "", word_count: int = 800,
+def _build_bot2_system(workspace: str, style_id: str = "", word_count: int = 800,
                        tips: str = "", prev_ending: str = "",
                        bot2_context: str = "") -> str:
     """构建 Bot2 系统提示词
@@ -31,7 +35,7 @@ def _build_bot2_system(style_id: str = "", word_count: int = 800,
     if bot2_context and bot2_context.strip():
         parts.append(bot2_context.strip())
 
-    style = _get_style_by_id(style_id)
+    style = _get_style_by_id(workspace, style_id)
     if style:
         parts.append(
             f"【文风要求：{style['name']}】\n{style.get('desc', '')}\n\n"
@@ -71,10 +75,10 @@ def _build_outline_block(outline: str, chapter_outline: str) -> str:
     return "\n\n".join(parts)
 
 
-@router.post("/api/bot2/write")
-async def bot2_write(req: Bot2WriteRequest):
+@router.post("/bot2/write")
+async def bot2_write(workspace: str, req: Bot2WriteRequest):
     system_prompt = _build_bot2_system(
-        req.style_id, req.word_count, req.tips, req.prev_ending, req.bot2_context
+        workspace, req.style_id, req.word_count, req.tips, req.prev_ending, req.bot2_context
     )
     # user：总大纲 → 本章详细大纲（把创作当下最关键的章节大纲放末尾高注意力位）
     user_prompt = _build_outline_block(req.outline, req.chapter_outline)
@@ -94,10 +98,10 @@ async def bot2_write(req: Bot2WriteRequest):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-@router.post("/api/bot2/rewrite")
-async def bot2_rewrite(req: Bot2RewriteRequest):
+@router.post("/bot2/rewrite")
+async def bot2_rewrite(workspace: str, req: Bot2RewriteRequest):
     system_prompt = _build_bot2_system(
-        req.style_id, req.word_count, req.tips, req.prev_ending, req.bot2_context
+        workspace, req.style_id, req.word_count, req.tips, req.prev_ending, req.bot2_context
     )
     # user：按 稳定→可变→重要指令 排列
     #   大纲（本章内稳定）→ 当前正文（每轮变）→ 审核建议（每轮变、最重要）→ 执行指令（末尾）
