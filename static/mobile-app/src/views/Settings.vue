@@ -111,13 +111,12 @@
         <div class="field-stack">
           <label class="field-card">
             <span class="field-label">目标字数</span>
-            <span class="field-hint">当前会按约 {{ normalizedDraftWordCount }} 字来创作。</span>
+            <span class="field-hint">当前会按约 {{ normalizedDraftWordCount }} 字来创作（不设上限，请按 Bot2 max_tokens 自行权衡）。</span>
             <input
               v-model="draftWordCount"
               class="field-input"
               type="number"
-              min="200"
-              max="5000"
+              min="1"
               step="100"
             />
 
@@ -571,8 +570,9 @@ function setTheme(theme) {
 }
 
 function normalizeWordCount(value) {
+  // 不设上限；非法值回退 800
   const nextValue = Math.round(Number(value) || 800);
-  return Math.min(5000, Math.max(200, nextValue));
+  return nextValue >= 1 ? nextValue : 800;
 }
 
 function applyWordPreset(value) {

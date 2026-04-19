@@ -58,8 +58,10 @@ function normalizeNumber(value, fallback) {
 }
 
 function normalizeWordCount(value, fallback = 800) {
+  // 字数不设上限，让用户自己按 Bot2 的 max_tokens 权衡。
+  // 仅保证：是正整数；非数字/0/负数都回退到 fallback。
   const nextValue = Math.round(normalizeNumber(value, fallback));
-  return Math.min(5000, Math.max(200, nextValue));
+  return nextValue >= 1 ? nextValue : fallback;
 }
 
 function normalizeBotConfig(botKey, botConfig = {}) {

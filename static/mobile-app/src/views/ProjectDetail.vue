@@ -146,9 +146,8 @@ const goToCard = async (index) => {
     writingViewRef.value?.startGenerating?.();
   }
 
-  if (index === 2) {
-    reviewViewRef.value?.runReview?.();
-  }
+  // 切到 Review 卡片时不再自动触发审核。首次进入展示空状态，用户主动点「重新审核」再调。
+  // 上一次的审核结果仍由 Review.vue 的 onMounted 从 projectStore.reviews 恢复。
 
   if (index === 3) {
     await memoryViewRef.value?.ensureCurrentSummary?.();

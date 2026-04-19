@@ -83,8 +83,9 @@ const hasContent = computed(() => Boolean(String(projectStore.currentContent || 
 const canGenerate = computed(() => Boolean(projectStore.currentOutline || projectStore.chapterOutline));
 const requestStyleId = computed(() => String(projectStore.selectedStyleId || '').trim());
 const requestWordCount = computed(() => {
+  // 字数不设上限，用户按 Bot2 的 max_tokens 自行权衡
   const nextValue = Math.round(Number(projectStore.wordCount) || 800);
-  return Math.min(5000, Math.max(200, nextValue));
+  return nextValue >= 1 ? nextValue : 800;
 });
 
 const formattedContent = computed(() => {
