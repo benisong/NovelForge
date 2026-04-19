@@ -119,6 +119,8 @@ class SaveProjectRequest(BaseModel):
     chapter_outline: str = ""
     current_summary: str = ""
     current_content: str = ""
+    style_id: str = ""
+    word_count: int = 800
     reviews: list[dict] = []
     logs: list[dict] = []
     pipeline_state: Optional[dict] = None

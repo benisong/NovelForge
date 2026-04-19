@@ -102,6 +102,149 @@
       <section class="section-card">
         <div class="section-heading">
           <div>
+            <p class="section-kicker">Writing Setup</p>
+            <h2>字数与文风</h2>
+          </div>
+          <p class="section-copy">Bot2 写作和重写都会使用这里的目标字数，Bot3 也会按所选文风做风格一致性审核。</p>
+        </div>
+
+        <div class="field-stack">
+          <label class="field-card">
+            <span class="field-label">目标字数</span>
+            <span class="field-hint">当前会按约 {{ normalizedDraftWordCount }} 字来创作。</span>
+            <input
+              v-model="draftWordCount"
+              class="field-input"
+              type="number"
+              min="200"
+              max="5000"
+              step="100"
+            />
+
+            <div class="word-preset-row">
+              <span class="inline-label">快捷选择</span>
+              <div class="word-preset-list">
+                <button
+                  v-for="preset in WORD_COUNT_PRESETS"
+                  :key="preset"
+                  class="word-preset"
+                  :class="{ active: normalizedDraftWordCount === preset }"
+                  type="button"
+                  @click="applyWordPreset(preset)"
+                >
+                  {{ preset }}
+                </button>
+              </div>
+            </div>
+          </label>
+
+          <div class="field-card">
+            <div class="field-head">
+              <div>
+                <span class="field-label">文风设置</span>
+                <span class="field-hint">会同时影响 Bot2 创作和 Bot3 的风格一致性审核。</span>
+              </div>
+              <button
+                class="ghost-button"
+                :disabled="!draftStyleId"
+                type="button"
+                @click="draftStyleId = ''"
+              >
+                清空文风
+              </button>
+            </div>
+
+            <div v-if="isLoadingStyles" class="style-empty-state">正在加载文风列表...</div>
+            <div v-else-if="styleOptions.length" class="style-grid">
+              <button
+                v-for="style in styleOptions"
+                :key="style.id"
+                class="style-option"
+                :class="{ active: draftStyleId === style.id }"
+                type="button"
+                @click="draftStyleId = style.id"
+              >
+                <span class="style-option-name">{{ style.name }}</span>
+                <span class="style-option-desc">{{ style.desc || '暂无描述' }}</span>
+              </button>
+            </div>
+            <div v-else class="style-empty-state">暂时没有可用文风，请先在 PC 端导入或检查 `/api/styles` 数据。</div>
+
+            <div class="style-preview" :class="{ empty: !selectedStyleMeta }">
+              <template v-if="selectedStyleMeta">
+                <strong>{{ selectedStyleMeta.name }}</strong>
+                <p>{{ selectedStyleMeta.desc || '暂无文风描述' }}</p>
+                <span>{{ selectedStyleSnippet || '该文风暂时没有示例片段。' }}</span>
+              </template>
+              <template v-else>
+                当前未选择文风，将使用默认叙事风格。
+              </template>
+            </div>
+
+            <div class="custom-style-toolbar">
+              <div>
+                <span class="field-label">自定义文风</span>
+                <span class="field-hint">支持粘贴一段你想模仿的正文片段，保存后就能像预设文风一样直接选用。</span>
+              </div>
+              <button
+                class="ghost-button"
+                type="button"
+                @click="openStyleEditor()"
+              >
+                新建自定义
+              </button>
+            </div>
+
+            <div v-if="customStyleOptions.length" class="custom-style-list">
+              <div
+                v-for="style in customStyleOptions"
+                :key="style.id"
+                class="custom-style-card"
+                :class="{ active: draftStyleId === style.id }"
+              >
+                <div class="custom-style-head">
+                  <div>
+                    <strong>{{ style.name }}</strong>
+                    <p>{{ style.desc || '暂无描述' }}</p>
+                  </div>
+                  <span class="custom-style-badge">自定义</span>
+                </div>
+                <span class="custom-style-snippet">{{ getStyleExampleSnippet(style.example) || '暂无示例片段。' }}</span>
+                <div class="custom-style-actions">
+                  <button
+                    class="mini-action-button"
+                    type="button"
+                    @click="draftStyleId = style.id"
+                  >
+                    {{ draftStyleId === style.id ? '当前已选' : '设为当前' }}
+                  </button>
+                  <button
+                    class="mini-action-button"
+                    type="button"
+                    @click="openStyleEditor(style)"
+                  >
+                    编辑
+                  </button>
+                  <button
+                    class="mini-action-button danger"
+                    type="button"
+                    @click="removeCustomStyle(style)"
+                  >
+                    删除
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div v-else class="style-empty-state">
+              还没有自定义文风。点“新建自定义”后，粘贴一段有代表性的文字片段就可以保存。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-card">
+        <div class="section-heading">
+          <div>
             <p class="section-kicker">视觉偏好</p>
             <h2>界面主题</h2>
           </div>
@@ -260,13 +403,81 @@
       close-on-click-action
       @select="handleSelectModel"
     />
+
+    <van-popup
+      v-model:show="showStyleEditor"
+      round
+      position="bottom"
+      safe-area-inset-bottom
+      class="style-editor-popup"
+      @closed="resetStyleDraft"
+    >
+      <div class="style-editor-sheet">
+        <div class="style-editor-head">
+          <div>
+            <h3>{{ styleDraft.id ? '编辑自定义文风' : '新建自定义文风' }}</h3>
+            <p>名称和示例片段必填。Bot2 会参考这段文字的语感、节奏和叙事方式来创作。</p>
+          </div>
+          <button
+            class="ghost-button"
+            type="button"
+            @click="closeStyleEditor"
+          >
+            关闭
+          </button>
+        </div>
+
+        <div class="style-editor-body">
+          <van-cell-group inset>
+            <van-field
+              v-model.trim="styleDraft.name"
+              label="文风名称"
+              placeholder="例如：冷峻悬疑风"
+            />
+            <van-field
+              v-model.trim="styleDraft.desc"
+              label="一句描述"
+              placeholder="例如：短句推进，压迫感强，情绪克制"
+            />
+            <van-field
+              v-model="styleDraft.example"
+              type="textarea"
+              rows="8"
+              autosize
+              maxlength="3000"
+              show-word-limit
+              label="示例片段"
+              placeholder="粘贴最能体现文风的一段正文，建议 150-500 字。"
+            />
+          </van-cell-group>
+        </div>
+
+        <div class="style-editor-actions">
+          <button
+            class="save-bar-secondary"
+            type="button"
+            @click="closeStyleEditor"
+          >
+            取消
+          </button>
+          <button
+            class="save-bar-primary"
+            :disabled="isSavingStyleDraft"
+            type="button"
+            @click="saveCustomStyle"
+          >
+            {{ isSavingStyleDraft ? '保存中...' : '保存文风' }}
+          </button>
+        </div>
+      </div>
+    </van-popup>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { showToast } from 'vant';
+import { showConfirmDialog, showToast } from 'vant';
 
 import { createDefaultConfig, useProjectStore } from '@/stores/project';
 import { getWorkspace } from '@/api/url';
@@ -309,9 +520,22 @@ const draftConfig = ref(createDefaultConfig());
 const activeBot = ref('bot1');
 const themeMode = ref('light');
 const isSaving = ref(false);
+const draftWordCount = ref(800);
+const draftStyleId = ref('');
+const isLoadingStyles = ref(false);
+const isSavingStyleDraft = ref(false);
+const stylesDefaultWordCount = ref(800);
+const styleOptions = ref([]);
+const showStyleEditor = ref(false);
 const showModelPicker = ref(false);
 const modelActions = ref([]);
 const pickerBotKey = ref('bot1');
+const styleDraft = reactive({
+  id: '',
+  name: '',
+  desc: '',
+  example: '',
+});
 const loadingBots = reactive({
   bot1: false,
   bot2: false,
@@ -319,9 +543,22 @@ const loadingBots = reactive({
   bot4: false,
 });
 
+const WORD_COUNT_PRESETS = [500, 800, 1500, 3000];
+
 const activeBotMeta = computed(
   () => botCards.find((item) => item.key === activeBot.value) || botCards[0],
 );
+const normalizedDraftWordCount = computed(() => normalizeWordCount(draftWordCount.value));
+const selectedStyleMeta = computed(
+  () =>
+    styleOptions.value.find((item) => item.id === draftStyleId.value) || null,
+);
+const customStyleOptions = computed(() =>
+  styleOptions.value.filter((item) => !item.preset),
+);
+const selectedStyleSnippet = computed(() => {
+  return getStyleExampleSnippet(selectedStyleMeta.value?.example);
+});
 
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
@@ -331,6 +568,152 @@ function applyTheme(theme) {
 
 function setTheme(theme) {
   applyTheme(theme);
+}
+
+function normalizeWordCount(value) {
+  const nextValue = Math.round(Number(value) || 800);
+  return Math.min(5000, Math.max(200, nextValue));
+}
+
+function applyWordPreset(value) {
+  draftWordCount.value = value;
+}
+
+function getStyleExampleSnippet(example, maxLength = 140) {
+  const text = String(example || '').trim();
+  if (!text) {
+    return '';
+  }
+
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+function buildStylePayload(style) {
+  return {
+    id: style.id,
+    name: String(style.name || '').trim(),
+    desc: String(style.desc || '').trim(),
+    example: String(style.example || '').trim(),
+    custom: true,
+  };
+}
+
+function resetStyleDraft() {
+  styleDraft.id = '';
+  styleDraft.name = '';
+  styleDraft.desc = '';
+  styleDraft.example = '';
+}
+
+function openStyleEditor(style = null) {
+  if (style) {
+    styleDraft.id = style.id;
+    styleDraft.name = style.name || '';
+    styleDraft.desc = style.desc || '';
+    styleDraft.example = style.example || '';
+  } else {
+    resetStyleDraft();
+  }
+
+  showStyleEditor.value = true;
+}
+
+function closeStyleEditor() {
+  showStyleEditor.value = false;
+  resetStyleDraft();
+}
+
+async function persistCustomStyles() {
+  const payload = {
+    styles: customStyleOptions.value.map((item) => buildStylePayload(item)),
+    default_word_count: stylesDefaultWordCount.value,
+  };
+
+  const response = await fetch('/api/styles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+}
+
+async function saveCustomStyle() {
+  if (isSavingStyleDraft.value) {
+    return;
+  }
+
+  const name = String(styleDraft.name || '').trim();
+  const desc = String(styleDraft.desc || '').trim();
+  const example = String(styleDraft.example || '').trim();
+  if (!name) {
+    showToast('请先填写文风名称');
+    return;
+  }
+
+  if (!example) {
+    showToast('请先粘贴示例片段');
+    return;
+  }
+
+  const normalizedStyle = buildStylePayload({
+    id:
+      styleDraft.id ||
+      `custom_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+    name,
+    desc: desc || name,
+    example,
+  });
+
+  const previousOptions = [...styleOptions.value];
+  const targetIndex = styleOptions.value.findIndex((item) => item.id === normalizedStyle.id);
+  if (targetIndex >= 0) {
+    styleOptions.value.splice(targetIndex, 1, normalizedStyle);
+  } else {
+    styleOptions.value = [...styleOptions.value, normalizedStyle];
+  }
+
+  isSavingStyleDraft.value = true;
+  try {
+    await persistCustomStyles();
+    draftStyleId.value = normalizedStyle.id;
+    showToast(styleDraft.id ? '自定义文风已更新' : '自定义文风已保存');
+    closeStyleEditor();
+  } catch (error) {
+    console.error('保存自定义文风失败:', error);
+    styleOptions.value = previousOptions;
+    showToast('自定义文风保存失败');
+  } finally {
+    isSavingStyleDraft.value = false;
+  }
+}
+
+async function removeCustomStyle(style) {
+  try {
+    await showConfirmDialog({
+      title: '删除自定义文风',
+      message: `确认删除「${style.name}」吗？删除后 Bot2/Bot3 将不能再使用它。`,
+    });
+  } catch {
+    return;
+  }
+
+  const previousOptions = [...styleOptions.value];
+  styleOptions.value = styleOptions.value.filter((item) => item.id !== style.id);
+  if (draftStyleId.value === style.id) {
+    draftStyleId.value = '';
+  }
+
+  try {
+    await persistCustomStyles();
+    showToast('自定义文风已删除');
+  } catch (error) {
+    console.error('删除自定义文风失败:', error);
+    styleOptions.value = previousOptions;
+    showToast('删除自定义文风失败');
+  }
 }
 
 function isBotConfigured(botKey) {
@@ -405,21 +788,68 @@ function handleSelectModel(action) {
   showToast(`已选择模型 ${action.name}`);
 }
 
+async function loadStyles() {
+  isLoadingStyles.value = true;
+
+  try {
+    const response = await fetch('/api/styles');
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    styleOptions.value = Array.isArray(data.styles) ? data.styles : [];
+    stylesDefaultWordCount.value = normalizeWordCount(data.default_word_count || 800);
+
+    if (
+      draftStyleId.value &&
+      !styleOptions.value.some((item) => item.id === draftStyleId.value)
+    ) {
+      draftStyleId.value = '';
+    }
+  } catch (error) {
+    console.error('加载文风列表失败:', error);
+    styleOptions.value = [];
+    showToast('文风列表加载失败');
+  } finally {
+    isLoadingStyles.value = false;
+  }
+}
+
 async function saveCurrentConfig() {
   if (isSaving.value) {
     return;
   }
 
   isSaving.value = true;
-  const ok = await projectStore.saveConfig(draftConfig.value);
+  const nextWordCount = normalizeWordCount(draftWordCount.value);
+  draftWordCount.value = nextWordCount;
+  projectStore.wordCount = nextWordCount;
+  projectStore.selectedStyleId = draftStyleId.value;
+
+  const configOk = await projectStore.saveConfig(draftConfig.value);
+  const projectOk = await projectStore.saveProject({ force: true });
   isSaving.value = false;
 
-  if (!ok) {
+  if (!configOk && !projectOk) {
     showToast('配置保存失败');
     return;
   }
 
-  draftConfig.value = projectStore.createConfigDraft();
+  if (configOk) {
+    draftConfig.value = projectStore.createConfigDraft();
+  }
+
+  if (!configOk) {
+    showToast('模型配置保存失败，但创作设置已更新');
+    return;
+  }
+
+  if (!projectOk) {
+    showToast('模型配置已保存，但创作设置未写入项目');
+    return;
+  }
+
   showToast('配置已保存');
 }
 
@@ -432,7 +862,11 @@ onMounted(async () => {
   applyTheme(savedTheme);
 
   await projectStore.loadConfig();
+  await projectStore.loadProject();
   draftConfig.value = projectStore.createConfigDraft();
+  draftWordCount.value = projectStore.wordCount;
+  draftStyleId.value = projectStore.selectedStyleId;
+  await loadStyles();
 });
 </script>
 
@@ -594,6 +1028,252 @@ onMounted(async () => {
 .field-stack {
   display: grid;
   gap: 12px;
+}
+
+.word-preset-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inline-label {
+  color: var(--app-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.word-preset-list,
+.style-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.word-preset-list {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.word-preset,
+.style-option {
+  border: 1px solid var(--app-border);
+  background: var(--app-surface-muted);
+  color: var(--app-text);
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+
+.word-preset {
+  padding: 10px 0;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.word-preset.active,
+.style-option.active {
+  border-color: rgba(201, 104, 44, 0.42);
+  background: rgba(201, 104, 44, 0.12);
+  box-shadow: 0 12px 24px rgba(201, 104, 44, 0.1);
+}
+
+.style-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 2px;
+}
+
+.style-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 16px;
+  text-align: left;
+}
+
+.style-option-name {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.style-option-desc {
+  color: var(--app-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.style-empty-state,
+.style-preview {
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  background: var(--app-surface-muted);
+}
+
+.style-empty-state {
+  padding: 14px;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.style-preview {
+  margin-top: 12px;
+  padding: 14px 16px;
+}
+
+.custom-style-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-top: 14px;
+}
+
+.custom-style-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.custom-style-card {
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  background: var(--app-surface-muted);
+  padding: 14px;
+}
+
+.custom-style-card.active {
+  border-color: rgba(201, 104, 44, 0.42);
+  box-shadow: 0 12px 24px rgba(201, 104, 44, 0.1);
+}
+
+.custom-style-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.custom-style-head strong {
+  display: block;
+  color: var(--app-text);
+  font-size: 14px;
+}
+
+.custom-style-head p {
+  margin: 6px 0 0;
+  color: var(--app-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.custom-style-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--app-accent-soft);
+  color: var(--app-accent-strong);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.custom-style-snippet {
+  display: block;
+  margin-top: 10px;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.custom-style-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.mini-action-button {
+  border: none;
+  border-radius: 999px;
+  background: var(--app-accent-soft);
+  color: var(--app-accent-strong);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mini-action-button.danger {
+  background: rgba(238, 10, 36, 0.12);
+  color: #c82333;
+}
+
+.style-preview strong {
+  display: block;
+  color: var(--app-text);
+  font-size: 14px;
+}
+
+.style-preview p,
+.style-preview span {
+  margin: 8px 0 0;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.style-preview.empty {
+  color: var(--app-text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.style-editor-popup {
+  max-height: 88vh;
+}
+
+.style-editor-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+}
+
+.style-editor-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.style-editor-head h3 {
+  margin: 0;
+  color: var(--app-text);
+  font-size: 18px;
+}
+
+.style-editor-head p {
+  margin: 8px 0 0;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.style-editor-body {
+  overflow-y: auto;
+}
+
+.style-editor-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr;
+  gap: 10px;
 }
 
 .metric-card,
@@ -791,6 +1471,7 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
+.ghost-button:disabled,
 .fetch-button:disabled,
 .nav-save-button:disabled,
 .save-bar-primary:disabled {
@@ -839,14 +1520,20 @@ onMounted(async () => {
   }
 
   .hero-metrics,
+  .style-editor-actions,
+  .word-preset-list,
+  .style-grid,
   .theme-switcher,
   .bot-switcher {
     grid-template-columns: 1fr;
   }
 
+  .custom-style-toolbar,
+  .custom-style-head,
   .section-heading,
   .bot-panel-header,
   .field-head,
+  .style-editor-head,
   .save-bar {
     grid-template-columns: 1fr;
     display: grid;

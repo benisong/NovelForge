@@ -57,6 +57,11 @@ function normalizeNumber(value, fallback) {
   return Number.isFinite(nextValue) ? nextValue : fallback;
 }
 
+function normalizeWordCount(value, fallback = 800) {
+  const nextValue = Math.round(normalizeNumber(value, fallback));
+  return Math.min(5000, Math.max(200, nextValue));
+}
+
 function normalizeBotConfig(botKey, botConfig = {}) {
   const defaults = BOT_DEFAULTS[botKey];
   return {
@@ -140,6 +145,8 @@ export const useProjectStore = defineStore('project', () => {
   const currentOutline = ref('');
   const chapterOutline = ref('');
   const currentContent = ref('');
+  const selectedStyleId = ref('');
+  const wordCount = ref(800);
   const reviews = ref([]);
   const summaries = ref([]);
   const bigSummaries = ref([]);
@@ -250,6 +257,8 @@ export const useProjectStore = defineStore('project', () => {
       currentOutline.value = data.current_outline || '';
       chapterOutline.value = data.chapter_outline || '';
       currentContent.value = data.current_content || '';
+      selectedStyleId.value = String(data.style_id || '').trim();
+      wordCount.value = normalizeWordCount(data.word_count, 800);
       reviews.value = data.reviews || [];
       chapters.value = data.chapters || [];
       summaries.value = data.small_summaries || [];
@@ -262,8 +271,15 @@ export const useProjectStore = defineStore('project', () => {
     }
   };
 
-  const saveProject = async () => {
-    if (!projectId.value && chatHistory.value.length === 0 && chapters.value.length === 0) {
+  const saveProject = async (options = {}) => {
+    const { force = false } = options;
+
+    if (
+      !force &&
+      !projectId.value &&
+      chatHistory.value.length === 0 &&
+      chapters.value.length === 0
+    ) {
       return false;
     }
 
@@ -279,6 +295,8 @@ export const useProjectStore = defineStore('project', () => {
       current_outline: currentOutline.value,
       chapter_outline: chapterOutline.value,
       current_content: currentContent.value,
+      style_id: selectedStyleId.value,
+      word_count: normalizeWordCount(wordCount.value, 800),
       reviews: reviews.value,
       small_summaries: summaries.value,
       big_summaries: bigSummaries.value,
@@ -313,6 +331,8 @@ export const useProjectStore = defineStore('project', () => {
     currentOutline,
     chapterOutline,
     currentContent,
+    selectedStyleId,
+    wordCount,
     reviews,
     summaries,
     bigSummaries,

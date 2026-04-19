@@ -81,6 +81,11 @@ const abortController = ref(null);
 
 const hasContent = computed(() => Boolean(String(projectStore.currentContent || '').trim()));
 const canGenerate = computed(() => Boolean(projectStore.currentOutline || projectStore.chapterOutline));
+const requestStyleId = computed(() => String(projectStore.selectedStyleId || '').trim());
+const requestWordCount = computed(() => {
+  const nextValue = Math.round(Number(projectStore.wordCount) || 800);
+  return Math.min(5000, Math.max(200, nextValue));
+});
 
 const formattedContent = computed(() => {
   if (!projectStore.currentContent) {
@@ -137,8 +142,8 @@ const startGenerating = async (suggestions = []) => {
         content: previousContent,
         suggestions: suggestionsText,
         config,
-        style_id: '',
-        word_count: 800,
+        style_id: requestStyleId.value,
+        word_count: requestWordCount.value,
         tips: '',
         prev_ending: getPreviousEnding(projectStore),
         bot2_context: buildBot2Context(projectStore),
@@ -147,8 +152,8 @@ const startGenerating = async (suggestions = []) => {
         outline: projectStore.currentOutline,
         chapter_outline: projectStore.chapterOutline,
         config,
-        style_id: '',
-        word_count: 800,
+        style_id: requestStyleId.value,
+        word_count: requestWordCount.value,
         tips: '',
         prev_ending: getPreviousEnding(projectStore),
         bot2_context: buildBot2Context(projectStore),
