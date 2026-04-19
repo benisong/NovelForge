@@ -153,9 +153,10 @@ const activeNames = ref('');
 const showEditDialog = ref(false);
 const editingForm = ref({ dim: '', index: -1, problem: '', suggestion: '' });
 const isLoading = ref(false);
-const lastReviewedContent = ref('');
+const lastReviewedSignature = ref('');
 
 const passScore = computed(() => Number(projectStore.config?.pass_score ?? 8));
+const currentStyleId = computed(() => String(projectStore.selectedStyleId || '').trim());
 
 const averageScore = computed(() => {
   const total = scoreList.value.reduce((sum, item) => sum + Number(item.value || 0), 0);
@@ -175,6 +176,20 @@ const groupedSuggestions = computed(() => {
 
   return Object.entries(groups).map(([key, items]) => ({ key, items }));
 });
+
+const getReviewSignature = (content, styleId = currentStyleId.value) =>
+  `${String(styleId || '').trim()}::${String(content || '').trim()}`;
+
+const findPersistedReview = (signature) => {
+  for (let index = projectStore.reviews.length - 1; index >= 0; index -= 1) {
+    const item = projectStore.reviews[index];
+    if (getReviewSignature(item.content, item.style_id) === signature) {
+      return item;
+    }
+  }
+
+  return null;
+};
 
 const applyReview = (review) => {
   const items = Array.isArray(review.items) ? review.items : [];
@@ -199,6 +214,7 @@ const persistReview = () => {
   const record = {
     time: nowString(),
     content: projectStore.currentContent,
+    style_id: currentStyleId.value,
     review: {
       scores: Object.fromEntries(scoreList.value.map((item) => [item.key, item.value])),
       average: Number(averageScore.value),
@@ -207,7 +223,9 @@ const persistReview = () => {
     },
   };
 
-  const latestIndex = projectStore.reviews.findIndex((item) => item.content === projectStore.currentContent);
+  const latestIndex = projectStore.reviews.findIndex(
+    (item) => getReviewSignature(item.content, item.style_id) === getReviewSignature(projectStore.currentContent),
+  );
   if (latestIndex >= 0) {
     projectStore.reviews.splice(latestIndex, 1, record);
   } else {
@@ -221,15 +239,16 @@ const runReview = async () => {
   }
 
   const content = String(projectStore.currentContent || '').trim();
+  const reviewSignature = getReviewSignature(content);
   if (!content) {
     showToast('先生成正文再审核');
     return;
   }
 
-  if (lastReviewedContent.value === content && projectStore.reviews.length > 0) {
-    const latest = projectStore.reviews.at(-1)?.review;
-    if (latest) {
-      applyReview(latest);
+  if (lastReviewedSignature.value === reviewSignature && projectStore.reviews.length > 0) {
+    const cachedReview = findPersistedReview(reviewSignature)?.review;
+    if (cachedReview) {
+      applyReview(cachedReview);
       return;
     }
   }
@@ -249,7 +268,7 @@ const runReview = async () => {
         content,
         outline: projectStore.currentOutline || projectStore.chapterOutline,
         config,
-        style_id: '',
+        style_id: currentStyleId.value,
         custom_prompt: '',
       }),
     });
@@ -261,7 +280,7 @@ const runReview = async () => {
 
     applyReview(review);
     persistReview();
-    lastReviewedContent.value = content;
+    lastReviewedSignature.value = reviewSignature;
     await projectStore.saveProject();
   } catch (error) {
     showToast(error.message || 'Bot3 审核失败');
@@ -340,10 +359,11 @@ const handleApprove = async () => {
 };
 
 onMounted(() => {
-  const latest = projectStore.reviews.at(-1);
-  if (latest?.review && latest.content === projectStore.currentContent) {
+  const reviewSignature = getReviewSignature(projectStore.currentContent);
+  const latest = findPersistedReview(reviewSignature);
+  if (latest?.review) {
     applyReview(latest.review);
-    lastReviewedContent.value = latest.content;
+    lastReviewedSignature.value = reviewSignature;
   }
 });
 
