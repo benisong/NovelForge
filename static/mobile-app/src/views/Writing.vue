@@ -30,7 +30,8 @@
     </div>
 
     <div class="content-area" ref="contentAreaRef">
-      <div class="chapter-content" v-html="formattedContent"></div>
+      <div v-if="!projectStore.currentContent" class="chapter-placeholder">等待生成...</div>
+      <div v-else class="chapter-content">{{ projectStore.currentContent }}</div>
       <span v-if="isGenerating" class="typing-cursor">|</span>
     </div>
 
@@ -88,13 +89,11 @@ const requestWordCount = computed(() => {
   return nextValue >= 1 ? nextValue : 800;
 });
 
-const formattedContent = computed(() => {
-  if (!projectStore.currentContent) {
-    return '<span style="color:#969799;font-style:italic;">等待生成...</span>';
-  }
-
-  return String(projectStore.currentContent).replace(/\n/g, '<br/>');
-});
+// 旧版用 v-html + replace(\\n, <br/>) 渲染正文，但没转义 < > & 等 HTML 字符。
+// 模型生成的小说里只要出现 "<"（对话/不等号/特殊符号），浏览器会把它当作 HTML 标签起点，
+// 后续内容被吞掉直到遇到 ">" 才"恢复"，表现为"生成到一半就不再继续显示"。
+// 现在改用 textContent + white-space: pre-wrap（见 .chapter-content 样式），
+// 浏览器把所有字符当作纯文本，\\n 由 CSS 渲染成换行。
 
 const scrollToBottom = async () => {
   await nextTick();
@@ -249,6 +248,13 @@ defineExpose({
 
 .chapter-content {
   text-align: justify;
+  white-space: pre-wrap;        /* 保留模型输出的换行与连续空格，无需用 v-html */
+  word-break: break-word;
+}
+
+.chapter-placeholder {
+  color: #969799;
+  font-style: italic;
 }
 
 .typing-cursor {
