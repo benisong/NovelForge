@@ -47,6 +47,7 @@ td .actions .danger:hover { border-color:var(--accent-red); color:var(--accent-r
   <div class="head">
     <div class="logo">&#9881; NovelForge 管理</div>
     <div>
+      <a class="back" href="#" onclick="changeMyPassword();return false;" style="margin-right:14px">修改密码</a>
       <a class="back" href="/" style="margin-right:14px">&larr; 返回首页</a>
       <a class="back" href="/admin/logout">退出登录</a>
     </div>
@@ -206,6 +207,26 @@ async function deleteWs(slug) {
   if (!r.ok) { toast('删除失败：' + (j.detail || r.status), 'err'); return; }
   toast('已删除', 'ok');
   loadList();
+}
+
+async function changeMyPassword() {
+  const current = prompt('当前密码');
+  if (current === null || current === '') return;
+  const newP = prompt('新密码（≥4 字符）');
+  if (!newP) return;
+  const again = prompt('再次输入新密码');
+  if (newP !== again) { toast('两次输入不一致', 'err'); return; }
+  let r;
+  try {
+    r = await adminFetch('/api/admin/password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current: current, new: newP }),
+    });
+  } catch { return; }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { toast('修改失败：' + (j.detail || r.status), 'err'); return; }
+  toast('密码已更新（下次登录用新密码）', 'ok');
 }
 
 // 能进到这个页面说明 cookie 有效，自动加载列表

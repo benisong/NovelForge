@@ -55,7 +55,10 @@ COOKIE_PREFIX = "ws_"
 COOKIE_MAX_AGE = 30 * 24 * 3600  # 30 天
 COOKIE_SAMESITE = "lax"
 
-ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "admin").strip() or "admin"
+# 管理员账户存在 DATA_ROOT/_admin.json，首次启动自动用 admin/admin 初始化。
+ADMIN_FILE = DATA_ROOT / "_admin.json"
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_PASSWORD = "admin"
 _COOKIE_SECRET = os.environ.get("WORKSPACE_COOKIE_SECRET", "").strip()
 if not _COOKIE_SECRET:
     # 没配置时落到一个本地文件持久化，重启不会失效（但部署时强烈建议显式配 env）
@@ -343,24 +346,73 @@ def require_workspace(
     return workspace
 
 
-# ---- Admin token 校验（密码式） + cookie 会话 ----
+# ---- 管理员账户（_admin.json）+ cookie 会话 ----
 
 ADMIN_COOKIE_NAME = "novelforge_admin"
 ADMIN_COOKIE_MAX_AGE = 30 * 24 * 3600  # 30 天
 
 
-def is_admin(token: str) -> bool:
-    """密码比对（常量时间，防 timing）。ADMIN_TOKEN 没配时一律拒。"""
-    if not ADMIN_TOKEN:
+def _load_admin() -> dict:
+    if ADMIN_FILE.exists():
+        try:
+            return json.loads(ADMIN_FILE.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as e:
+            logger.error("_admin.json 解析失败: %s", e)
+    return {}
+
+
+def _save_admin(data: dict) -> None:
+    tmp = ADMIN_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(ADMIN_FILE)
+    try:
+        os.chmod(ADMIN_FILE, 0o600)
+    except OSError:
+        pass
+
+
+def ensure_admin_initialized() -> None:
+    """首次启动若 _admin.json 不存在，用默认 admin/admin 创建。"""
+    if not ADMIN_FILE.exists():
+        _save_admin({
+            "username": DEFAULT_ADMIN_USERNAME,
+            "password_hash": _hash_password(DEFAULT_ADMIN_PASSWORD),
+        })
+        logger.warning(
+            "首次启动：管理员账户已初始化为 %s/%s，请登录后立即在管理页修改密码",
+            DEFAULT_ADMIN_USERNAME, DEFAULT_ADMIN_PASSWORD,
+        )
+
+
+def get_admin_username() -> str:
+    return _load_admin().get("username", DEFAULT_ADMIN_USERNAME)
+
+
+def verify_admin_login(username: str, password: str) -> bool:
+    """账户名 + 密码校验。"""
+    data = _load_admin()
+    if not data:
         return False
-    if not token:
+    if (username or "").strip() != data.get("username", ""):
         return False
-    import hmac
-    return hmac.compare_digest(token, ADMIN_TOKEN)
+    return _check_password(password or "", data.get("password_hash", ""))
+
+
+def update_admin_password(current: str, new: str) -> None:
+    """自助改密码：校验当前密码 → 写入新哈希。"""
+    if len(new or "") < 4:
+        raise ValueError("新密码至少 4 个字符")
+    data = _load_admin()
+    if not data:
+        raise ValueError("管理员账户未初始化")
+    if not _check_password(current or "", data.get("password_hash", "")):
+        raise ValueError("当前密码错误")
+    data["password_hash"] = _hash_password(new)
+    _save_admin(data)
+    logger.info("管理员密码已更新")
 
 
 def issue_admin_cookie() -> str:
-    """登录成功后下发的 cookie 值（itsdangerous 签名，含颁发时间）。"""
     return _serializer.dumps({"role": "admin"})
 
 

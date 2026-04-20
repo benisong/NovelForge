@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NovelForge v3.0 (multi-workspace)")
 
+# 首次启动若 _admin.json 不存在，用默认 admin/admin 初始化
+ws.ensure_admin_initialized()
+
 # --- CORS ---
 _cors_origins = [
     o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()
@@ -258,9 +261,12 @@ async def admin_login_page(request: Request, error: str = ""):
 
 
 @app.post("/admin/login")
-async def admin_login_submit(password: str = Form("")):
-    if not ws.is_admin(password):
-        return RedirectResponse(url="/admin/login?error=密码错误", status_code=303)
+async def admin_login_submit(
+    username: str = Form(""),
+    password: str = Form(""),
+):
+    if not ws.verify_admin_login(username, password):
+        return RedirectResponse(url="/admin/login?error=用户名或密码错误", status_code=303)
     cookie_val = ws.issue_admin_cookie()
     resp = RedirectResponse(url="/admin", status_code=303)
     resp.set_cookie(
@@ -283,6 +289,24 @@ async def admin_logout():
 
 
 # ---- admin API（全部靠 cookie 校验）----
+
+@app.get("/api/admin/me")
+async def admin_me(_: None = Depends(_require_admin)):
+    """当前登录的管理员账户名（用于管理页显示）。"""
+    return {"username": ws.get_admin_username()}
+
+
+@app.post("/api/admin/password")
+async def admin_change_self_password(payload: dict = Body(...), _: None = Depends(_require_admin)):
+    """管理员自助改密码。需要提供当前密码 + 新密码。"""
+    current = payload.get("current") or ""
+    new = payload.get("new") or ""
+    try:
+        ws.update_admin_password(current, new)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True}
+
 
 @app.get("/api/admin/workspaces")
 async def admin_list(_: None = Depends(_require_admin)):
