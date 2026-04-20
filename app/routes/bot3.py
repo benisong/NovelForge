@@ -20,6 +20,18 @@ router = APIRouter(
 )
 
 
+# 无论用户是否改过 custom_prompt，系统强制追加这段输出格式铁律到 system 末尾。
+# 这样即使用户在前端编辑时删掉了 BOT3_SYSTEM 里的格式约定，后端 _parse_bot3_tags
+# 仍能拿到结构化标签。纯格式约束，不涉及评判口径。
+BOT3_FORMAT_ANCHOR = """## 输出格式硬约束（系统强制，不可覆盖）
+- 仅允许输出 <scores>、<analysis>、<item> 三种标签块，顺序固定
+- <scores> 必须包含 literary / logic / style / ai_feel 四项，形如 `literary=8.5`
+- 每条建议用独立 <item>...</item> 包裹，内含 dim / severity / location / problem / suggestion 五个字段
+- 禁止输出 JSON、markdown 列表或代码围栏；禁止在标签外写任何自然语言说明
+- 至少 3 条 item；若内容通过审核，也至少保留 1 条 low 级 item
+"""
+
+
 # ---------- Bot3 自定义提示词 ----------
 
 def _load_bot3_prompts(workspace: str) -> list[dict]:
@@ -54,8 +66,11 @@ async def save_bot3_prompts(workspace: str, data: dict):
 
 @router.post("/bot3/review")
 async def bot3_review(workspace: str, req: Bot3ReviewRequest):
+    # 1. 基础评审规则：用户可完全替换，但系统会在末尾强制追加 BOT3_FORMAT_ANCHOR
     base_prompt = req.custom_prompt.strip() if req.custom_prompt and req.custom_prompt.strip() else BOT3_SYSTEM
     system_parts = [base_prompt]
+
+    # 2. 目标文风附加（若有）
     style = _get_style_by_id(workspace, req.style_id) if req.style_id else None
     if style:
         system_parts.append(
@@ -64,6 +79,9 @@ async def bot3_review(workspace: str, req: Bot3ReviewRequest):
             f"参考示例片段：\n---\n{style['example']}\n---\n"
             f"请在「风格一致性」维度重点评判内容是否贴合上述文风要求。"
         )
+
+    # 3. 输出格式铁律：永远追加在末尾，防止用户删除原提示词里的格式约定导致 parser 失败
+    system_parts.append(BOT3_FORMAT_ANCHOR)
     messages = [{"role": "system", "content": "\n\n".join(system_parts)}]
 
     # user：cache_breaker 在最前（故意让 user 前缀 miss，避免模型缓存返回旧评审），
