@@ -40,17 +40,24 @@ body { display:flex; align-items:center; justify-content:center; padding:24px; o
   </div>
 </div>
 <script>
+// 按 User-Agent 决定 card 跳到桌面版还是移动版工作空间入口，
+// 避免"先进桌面 → 被服务端 302 跳移动端"的额外闪屏。
+function isMobile() {
+  return /Mobi|Android|iPhone|iPod|IEMobile|Opera Mini|Windows Phone/i.test(navigator.userAgent);
+}
+
 async function load() {
   try {
     const r = await fetch('/api/workspaces');
     const j = await r.json();
     const grid = document.getElementById('grid');
     if (!j.workspaces || j.workspaces.length === 0) {
-      grid.outerHTML = '<div class="empty">暂无工作空间。<br>请先访问 <code>/admin?token=...</code> 创建。</div>';
+      grid.outerHTML = '<div class="empty">暂无工作空间。<br>请先访问 <code>/admin</code> 创建。</div>';
       return;
     }
+    const base = isMobile() ? '/m/w/' : '/w/';
     grid.innerHTML = j.workspaces.map(w =>
-      '<a class="ws-card" href="/w/' + encodeURIComponent(w.slug) + '/">' +
+      '<a class="ws-card" href="' + base + encodeURIComponent(w.slug) + '/">' +
         '<div class="name">' + escapeHtml(w.name || w.slug) + '</div>' +
         '<div class="slug">' + escapeHtml(w.slug) + '</div>' +
         (w.last_active ? '<div class="meta">最近活跃 ' + escapeHtml(w.last_active) + '</div>' : '<div class="meta">未活跃</div>') +

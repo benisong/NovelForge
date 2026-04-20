@@ -106,10 +106,12 @@ def _inject_workspace(html: str, slug: str) -> str:
 
 @app.get("/")
 async def index(request: Request):
-    # 如果只有 1 个工作空间，自动跳进去（朋友少时更顺手）
+    # 只有 1 个工作空间：直接按 UA 跳到对应设备端，不再绕桌面 /w/<slug>/
     items = ws.list_workspaces_public()
     if len(items) == 1:
-        return RedirectResponse(url=f"/w/{items[0]['slug']}/", status_code=302)
+        slug = items[0]["slug"]
+        url = f"/m/w/{slug}/" if _is_mobile_ua(request) else f"/w/{slug}/"
+        return RedirectResponse(url=url, status_code=302)
     return HTMLResponse(_read_static("picker.html"))
 
 
