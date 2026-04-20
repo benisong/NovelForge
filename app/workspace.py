@@ -55,7 +55,7 @@ COOKIE_PREFIX = "ws_"
 COOKIE_MAX_AGE = 30 * 24 * 3600  # 30 天
 COOKIE_SAMESITE = "lax"
 
-ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "").strip()
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "admin").strip() or "admin"
 _COOKIE_SECRET = os.environ.get("WORKSPACE_COOKIE_SECRET", "").strip()
 if not _COOKIE_SECRET:
     # 没配置时落到一个本地文件持久化，重启不会失效（但部署时强烈建议显式配 env）
