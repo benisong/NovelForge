@@ -229,29 +229,68 @@ async def mobile_workspace_index(workspace: str, request: Request):
     return HTMLResponse(html)
 
 
-# ===== 管理员入口 =====
+# ===== 管理员入口（密码登录 + 30 天 cookie 会话）=====
 
-def _require_admin(token: str = "") -> str:
-    if not ws.is_admin(token):
-        raise HTTPException(403, "无效的管理员令牌")
-    return token
+def _require_admin(request: Request) -> None:
+    """受保护 API 依赖：校验 admin cookie；不通过 403。"""
+    raw = request.cookies.get(ws.ADMIN_COOKIE_NAME, "")
+    if not ws.verify_admin_cookie(raw):
+        raise HTTPException(status_code=403, detail="未登录管理员")
 
 
 @app.get("/admin")
-async def admin_page(token: str = ""):
-    """无 token 也允许访问页面：浏览器里再填 token 进 API。"""
-    preset = token if ws.is_admin(token) else ""
-    html = _read_static("admin.html").replace("{{ADMIN_TOKEN_JSON}}", json.dumps(preset))
+async def admin_page(request: Request):
+    """有有效 cookie → 渲染管理页；否则跳转登录页。"""
+    raw = request.cookies.get(ws.ADMIN_COOKIE_NAME, "")
+    if not ws.verify_admin_cookie(raw):
+        return RedirectResponse(url="/admin/login", status_code=302)
+    return HTMLResponse(_read_static("admin.html"))
+
+
+@app.get("/admin/login")
+async def admin_login_page(request: Request, error: str = ""):
+    """展示密码输入页；已登录则直接进管理。"""
+    raw = request.cookies.get(ws.ADMIN_COOKIE_NAME, "")
+    if ws.verify_admin_cookie(raw):
+        return RedirectResponse(url="/admin", status_code=302)
+    html = _read_static("admin_login.html").replace("{{ERROR_JSON}}", json.dumps(error or ""))
     return HTMLResponse(html)
 
 
+@app.post("/admin/login")
+async def admin_login_submit(password: str = Form("")):
+    if not ws.is_admin(password):
+        return RedirectResponse(url="/admin/login?error=密码错误", status_code=303)
+    cookie_val = ws.issue_admin_cookie()
+    resp = RedirectResponse(url="/admin", status_code=303)
+    resp.set_cookie(
+        ws.ADMIN_COOKIE_NAME,
+        cookie_val,
+        max_age=ws.ADMIN_COOKIE_MAX_AGE,
+        httponly=True,
+        samesite=ws.COOKIE_SAMESITE,
+        secure=False,  # 部署时 Nginx/CF 终止 TLS；直连 HTTPS 可改 True
+        path="/",
+    )
+    return resp
+
+
+@app.get("/admin/logout")
+async def admin_logout():
+    resp = RedirectResponse(url="/admin/login", status_code=302)
+    resp.delete_cookie(ws.ADMIN_COOKIE_NAME, path="/")
+    return resp
+
+
+# ---- admin API（全部靠 cookie 校验）----
+
 @app.get("/api/admin/workspaces")
-async def admin_list(token: str = "", _: str = Depends(_require_admin)):
+async def admin_list(_: None = Depends(_require_admin)):
     return {"workspaces": ws.list_workspaces_admin()}
 
 
 @app.post("/api/admin/workspaces")
-async def admin_create(payload: dict = Body(...), token: str = "", _: str = Depends(_require_admin)):
+async def admin_create(payload: dict = Body(...), _: None = Depends(_require_admin)):
     slug = (payload.get("slug") or "").strip().lower()
     name = (payload.get("name") or slug).strip()
     password = payload.get("password") or ""
@@ -262,7 +301,7 @@ async def admin_create(payload: dict = Body(...), token: str = "", _: str = Depe
 
 
 @app.post("/api/admin/workspaces/{slug}/password")
-async def admin_change_password(slug: str, payload: dict = Body(...), token: str = "", _: str = Depends(_require_admin)):
+async def admin_change_password(slug: str, payload: dict = Body(...), _: None = Depends(_require_admin)):
     password = payload.get("password") or ""
     try:
         ws.update_password(slug, password)
@@ -272,7 +311,7 @@ async def admin_change_password(slug: str, payload: dict = Body(...), token: str
 
 
 @app.post("/api/admin/workspaces/{slug}/rename")
-async def admin_rename(slug: str, payload: dict = Body(...), token: str = "", _: str = Depends(_require_admin)):
+async def admin_rename(slug: str, payload: dict = Body(...), _: None = Depends(_require_admin)):
     name = (payload.get("name") or "").strip()
     try:
         ws.rename_workspace(slug, name)
@@ -282,7 +321,7 @@ async def admin_rename(slug: str, payload: dict = Body(...), token: str = "", _:
 
 
 @app.delete("/api/admin/workspaces/{slug}")
-async def admin_delete(slug: str, token: str = "", _: str = Depends(_require_admin)):
+async def admin_delete(slug: str, _: None = Depends(_require_admin)):
     try:
         ws.delete_workspace(slug)
     except ValueError as e:

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NovelForge · 管理员登录</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+body { display:flex; align-items:center; justify-content:center; padding:24px; overflow:auto; }
+.card {
+  width:100%; max-width:380px;
+  background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px;
+  padding:32px 28px; box-shadow:0 8px 32px rgba(0,0,0,.25);
+}
+.card h1 { font-size:22px; color:var(--accent-purple); text-align:center; letter-spacing:1px; margin-bottom:6px; }
+.card .sub { text-align:center; color:var(--text-muted); font-size:12px; margin-bottom:24px; }
+.card label { display:block; font-size:12px; color:var(--text-muted); margin-bottom:6px; }
+.card input[type=password] {
+  width:100%; padding:10px 12px; font-size:14px;
+  background:var(--bg-tertiary); border:1px solid var(--border); border-radius:6px;
+  color:var(--text-primary); margin-bottom:16px;
+}
+.card input[type=password]:focus { outline:none; border-color:var(--accent-blue); }
+.card button {
+  width:100%; padding:11px; font-size:14px; font-weight:600;
+  background:var(--accent-blue); color:#fff; border:none; border-radius:6px; cursor:pointer;
+}
+.card button:hover { filter:brightness(1.1); }
+.card .err { background:rgba(255,107,107,.12); border:1px solid var(--accent-red); color:var(--accent-red); padding:8px 12px; border-radius:6px; font-size:12px; margin-bottom:16px; }
+.card .back { display:block; text-align:center; margin-top:18px; font-size:12px; color:var(--text-muted); text-decoration:none; }
+.card .back:hover { color:var(--accent-blue); }
+.card .hint { margin-top:14px; font-size:11px; color:var(--text-muted); text-align:center; line-height:1.6; }
+.card .hint code { background:var(--bg-tertiary); padding:1px 5px; border-radius:3px; }
+</style>
+</head>
+<body>
+<form class="card" method="POST" action="/admin/login">
+  <h1>&#9881; 管理员登录</h1>
+  <div class="sub">NovelForge 工作空间管理</div>
+  <div id="errBox"></div>
+  <label for="password">管理员密码</label>
+  <input type="password" id="password" name="password" required autofocus>
+  <button type="submit">登录</button>
+  <a class="back" href="/">&larr; 返回首页</a>
+  <div class="hint">
+    密码来自服务器 <code>.env</code> 里的 <code>ADMIN_TOKEN</code><br>
+    登录一次，cookie 记 30 天
+  </div>
+</form>
+<script>
+// 错误信息通过 json.dumps 注入，防 XSS
+const err = {{ERROR_JSON}};
+if (err) {
+  const box = document.getElementById('errBox');
+  box.className = 'err';
+  box.textContent = err;
+}
+</script>
+</body>
+</html>

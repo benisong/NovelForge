@@ -343,13 +343,32 @@ def require_workspace(
     return workspace
 
 
-# ---------- Admin token 校验 ----------
+# ---- Admin token 校验（密码式） + cookie 会话 ----
+
+ADMIN_COOKIE_NAME = "novelforge_admin"
+ADMIN_COOKIE_MAX_AGE = 30 * 24 * 3600  # 30 天
+
 
 def is_admin(token: str) -> bool:
-    """常量时间比较，防 timing。"""
+    """密码比对（常量时间，防 timing）。ADMIN_TOKEN 没配时一律拒。"""
     if not ADMIN_TOKEN:
         return False
     if not token:
         return False
     import hmac
     return hmac.compare_digest(token, ADMIN_TOKEN)
+
+
+def issue_admin_cookie() -> str:
+    """登录成功后下发的 cookie 值（itsdangerous 签名，含颁发时间）。"""
+    return _serializer.dumps({"role": "admin"})
+
+
+def verify_admin_cookie(raw: str) -> bool:
+    if not raw:
+        return False
+    try:
+        data = _serializer.loads(raw, max_age=ADMIN_COOKIE_MAX_AGE)
+    except (SignatureExpired, BadSignature):
+        return False
+    return isinstance(data, dict) and data.get("role") == "admin"
