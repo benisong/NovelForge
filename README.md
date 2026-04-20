@@ -42,6 +42,11 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
+> 如果提示 `docker: 'compose' is not a docker command`，说明装的是旧版 Docker，没有 Compose 插件。
+> Debian/Ubuntu：`apt install docker-compose-plugin`；
+> CentOS/RHEL：`dnf install docker-compose-plugin`；
+> 旧版的 `docker-compose`（连字符）也能用，`server_deploy.sh` 已做自动兼容。
+
 默认对外绑 `0.0.0.0:17000`。只想本机访问：`.env` 里改 `BIND_ADDR=127.0.0.1`。**公网部署请务必前置 Nginx + HTTPS**。
 
 ### 3. 创建第一个工作空间
