@@ -131,6 +131,69 @@ fi
 
 echo "🐳 使用: $DC_CMD"
 
+# ---- 确保 .env 存在且关键密钥已生成 ----
+# 首次部署自动生成 ADMIN_TOKEN 和 WORKSPACE_COOKIE_SECRET 写入 .env，
+# 之后再跑不会覆盖（.env 里已有值就保留）。
+NEW_ADMIN_TOKEN=""
+
+gen_random() {
+  local length="$1"
+  local charset="${2:-A-Za-z0-9}"
+  if command -v openssl >/dev/null 2>&1; then
+    # base64 后去掉 / + =，截取需要的长度
+    openssl rand -base64 $((length * 2)) 2>/dev/null | tr -dc "$charset" | head -c "$length"
+  else
+    # fallback：/dev/urandom（随便哪个 Linux 都有）
+    tr -dc "$charset" < /dev/urandom | head -c "$length"
+  fi
+}
+
+set_env_var() {
+  local key="$1"
+  local value="$2"
+  local file=".env"
+  # value 可能含 / 和 =（base64/hex 基本不会，但用 | 做分隔符更稳）
+  if grep -qE "^${key}=" "$file"; then
+    # 替换现有行；用 | 分隔 sed 表达式，避免 value 里的 / 冲突
+    sed -i.bak "s|^${key}=.*|${key}=${value}|" "$file" && rm -f "${file}.bak"
+  else
+    echo "${key}=${value}" >> "$file"
+  fi
+}
+
+ensure_env() {
+  if [ ! -f .env ]; then
+    if [ -f .env.example ]; then
+      cp .env.example .env
+      echo "📄 已从 .env.example 创建 .env"
+    else
+      touch .env
+    fi
+  fi
+
+  # ADMIN_TOKEN：没设 或 空 → 自动生成 16 位强密码
+  if ! grep -qE '^ADMIN_TOKEN=..+' .env; then
+    local token
+    token="$(gen_random 16)"
+    set_env_var ADMIN_TOKEN "$token"
+    NEW_ADMIN_TOKEN="$token"
+    echo "🔐 自动生成 ADMIN_TOKEN（已写入 .env）"
+  fi
+
+  # WORKSPACE_COOKIE_SECRET：没设 或 空 → 自动生成 64 位 hex
+  if ! grep -qE '^WORKSPACE_COOKIE_SECRET=..+' .env; then
+    local secret
+    secret="$(gen_random 64 'a-f0-9')"
+    set_env_var WORKSPACE_COOKIE_SECRET "$secret"
+    echo "🔐 自动生成 WORKSPACE_COOKIE_SECRET（已写入 .env）"
+  fi
+
+  # .env 敏感，收紧权限
+  chmod 600 .env 2>/dev/null || true
+}
+
+ensure_env
+
 # ---- 拉代码（非 git 目录时跳过，不中断）----
 if [ -d .git ]; then
   echo "📥 拉取最新代码..."
@@ -156,4 +219,16 @@ echo "🌐 PC 端:    http://<服务器IP>:17000"
 echo "📱 移动端:   http://<服务器IP>:17000/m/w/<slug>/"
 echo "📝 查看日志: $DC_CMD logs -f"
 echo ""
-echo "💡 首次使用：访问 http://<服务器IP>:17000/admin?token=<ADMIN_TOKEN> 创建工作空间"
+echo "💡 首次使用：访问 http://<服务器IP>:17000/admin 创建工作空间"
+
+if [ -n "$NEW_ADMIN_TOKEN" ]; then
+  echo ""
+  echo "════════════════════════════════════════════════════════════════"
+  echo "🔐 首次部署，已为你生成管理员密码（也保存在 .env 里，下次部署不变）"
+  echo ""
+  echo "    ADMIN_TOKEN = $NEW_ADMIN_TOKEN"
+  echo ""
+  echo "   在 /admin 登录页输入以上密码，之后 cookie 记 30 天。"
+  echo "   请立即记录到密码管理器，并妥善保管 .env 文件。"
+  echo "════════════════════════════════════════════════════════════════"
+fi
