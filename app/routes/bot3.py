@@ -446,6 +446,20 @@ def _build_rewrite_brief(
     return "\n".join(lines[:6]).strip()
 
 
+def _detect_truncation(result: str) -> bool:
+    """Return True if any known structural tag is opened but never closed.
+
+    Most common cause: the model hit max_tokens mid-response. We detect this so
+    the parser can stop synthesizing junk items from a half-written rewrite_plan.
+    """
+    for tag in KNOWN_TAGS:
+        opens = len(re.findall(fr"<{tag}\b[^>]*>", result, re.IGNORECASE))
+        closes = len(re.findall(fr"</{tag}>", result, re.IGNORECASE))
+        if opens > closes:
+            return True
+    return False
+
+
 def _parse_bot3_tags(result: str, pass_score: float) -> dict:
     scores = _parse_scores_block(_extract_tag_block(result, "scores"))
     rewrite_plan = _extract_tag_block(result, "rewrite_plan")
@@ -474,9 +488,27 @@ def _parse_bot3_tags(result: str, pass_score: float) -> dict:
     if not items and rewrite_plan:
         items = _items_from_rewrite_plan(rewrite_plan)
 
+    truncated = _detect_truncation(result)
+
     if len([key for key in DIM_KEYS if key in scores]) >= 4:
         values = [scores.get(key, 0) for key in DIM_KEYS]
         average = round(sum(values) / 4, 1)
+
+        if truncated:
+            return {
+                "scores": {key: scores.get(key, 0) for key in DIM_KEYS},
+                "average": average,
+                "passed": False,
+                "analysis": "（Bot3 回复中途被截断，结果不完整）",
+                "rewrite_brief": (
+                    "Bot3 回复被截断，最常见原因是 Bot3 的 max_tokens 太小。"
+                    "请到设置页把 Bot3 的 max_tokens 调到 4096 或更高，"
+                    "再点“再次审核”重新跑一次。"
+                ),
+                "items": [],
+                "retry_hint": True,
+                "truncated": True,
+            }
 
         if not items:
             return {

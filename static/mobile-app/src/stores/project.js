@@ -24,7 +24,7 @@ const BOT_DEFAULTS = {
     api_key: '',
     model: '',
     temperature: 0.3,
-    max_tokens: 2048,
+    max_tokens: 4096,
   },
   bot4: {
     base_url: '',

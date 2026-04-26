@@ -3,7 +3,7 @@ import { apiUrl, loginUrl } from '@/api/url';
 const BOT_DEFAULTS = {
   bot1: { temperature: 0.7, max_tokens: 4096 },
   bot2: { temperature: 0.8, max_tokens: 4096 },
-  bot3: { temperature: 0.3, max_tokens: 2048 },
+  bot3: { temperature: 0.3, max_tokens: 4096 },
   bot4: { temperature: 0.5, max_tokens: 4096 },
 };
 

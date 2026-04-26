@@ -10,7 +10,7 @@ function _botCfg(name,temp,maxTk){
 function getConfig(){return{
   bot1:_botCfg('bot1',0.7,4096),
   bot2:_botCfg('bot2',0.8,4096),
-  bot3:_botCfg('bot3',0.3,2048),
+  bot3:_botCfg('bot3',0.3,4096),
   bot4:_botCfg('bot4',0.5,4096),
   pass_score:parseFloat($('passScore').value)||8,max_retries:parseInt($('maxRetries').value)||3,
   big_summary_threshold:parseInt($('bigSummaryThreshold').value)||10,
