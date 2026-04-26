@@ -43,10 +43,10 @@ async function loadConfigs() {
       currentConfig = {
         id: 'default', name: '默认配置',
         pass_score: 8.0, max_retries: 3,
-        bot1: { base_url: '', api_key: '', model: '', temperature: 0.7, max_tokens: 4096 },
-        bot2: { base_url: '', api_key: '', model: '', temperature: 0.7, max_tokens: 4096 },
-        bot3: { base_url: '', api_key: '', model: '', temperature: 0.7, max_tokens: 4096 },
-        bot4: { base_url: '', api_key: '', model: '', temperature: 0.7, max_tokens: 4096, abstract_model: '' }
+        bot1: { base_url: '', api_key: '', model: '', temperature: 0.7, max_tokens: 16384 },
+        bot2: { base_url: '', api_key: '', model: '', temperature: 0.7, max_tokens: 16384 },
+        bot3: { base_url: '', api_key: '', model: '', temperature: 0.7, max_tokens: 16384 },
+        bot4: { base_url: '', api_key: '', model: '', temperature: 0.7, max_tokens: 16384, abstract_model: '' }
       };
     } else {
       // 为了简单，我们只操作 default (第一个) 配置

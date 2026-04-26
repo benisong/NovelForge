@@ -502,7 +502,7 @@ def _parse_bot3_tags(result: str, pass_score: float) -> dict:
                 "analysis": "（Bot3 回复中途被截断，结果不完整）",
                 "rewrite_brief": (
                     "Bot3 回复被截断，最常见原因是 Bot3 的 max_tokens 太小。"
-                    "请到设置页把 Bot3 的 max_tokens 调到 4096 或更高，"
+                    "请到设置页把 Bot3 的 max_tokens 调到 16384（默认值）或更高，"
                     "再点“再次审核”重新跑一次。"
                 ),
                 "items": [],

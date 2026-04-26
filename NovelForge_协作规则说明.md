@@ -304,7 +304,7 @@ Bot1-4 各自拥有：
 - api_key（API 密钥）
 - model（模型名称）
 - temperature（默认 0.7）
-- max_tokens（默认 4096）
+- max_tokens（默认 16384）
 
 Bot4 额外拥有：
 - abstract_model（摘要模型，复用Bot4的API地址和密钥）
@@ -411,7 +411,7 @@ Bot3通过 → Bot4主模型生成缩略版原文(condensed, 300-800字)
 |------|--------|------|
 | API 超时 | 180s | 所有 LLM 调用 |
 | 默认温度 | 0.7 | 所有 Bot |
-| 默认 max_tokens | 4096 | 所有 Bot |
+| 默认 max_tokens | 16384 | 所有 Bot |
 | 及格分 | 8.0 | Bot3 平均分 |
 | 最大重写 | 3 次 | Bot2→Bot3 循环 |
 | 目标字数 | 800 字 | Bot2 创作 |

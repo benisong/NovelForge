@@ -58,7 +58,7 @@ async def bot4_abstract(workspace: str, req: Bot4AbstractRequest):
             api_key=bot4_cfg.api_key,
             model=req.abstract_model,
             temperature=0.3,
-            max_tokens=2048,
+            max_tokens=16384,
         )
     else:
         abstract_cfg = bot4_cfg
