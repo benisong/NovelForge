@@ -157,7 +157,9 @@ const isLoading = ref(false);
 const lastReviewedSignature = ref('');
 
 const passScore = computed(() => Number(projectStore.config?.pass_score ?? 8));
-const currentStyleId = computed(() => String(projectStore.selectedStyleId || '').trim());
+const currentStyleId = computed(() =>
+  String(projectStore.selectedStyleId || projectStore.defaultStyleId || '').trim(),
+);
 
 const averageScore = computed(() => {
   const total = scoreList.value.reduce((sum, item) => sum + Number(item.value || 0), 0);

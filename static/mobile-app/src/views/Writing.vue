@@ -82,10 +82,14 @@ const abortController = ref(null);
 
 const hasContent = computed(() => Boolean(String(projectStore.currentContent || '').trim()));
 const canGenerate = computed(() => Boolean(projectStore.currentOutline || projectStore.chapterOutline));
-const requestStyleId = computed(() => String(projectStore.selectedStyleId || '').trim());
+const requestStyleId = computed(() =>
+  String(projectStore.selectedStyleId || projectStore.defaultStyleId || '').trim(),
+);
 const requestWordCount = computed(() => {
   // 字数不设上限，用户按 Bot2 的 max_tokens 自行权衡
-  const nextValue = Math.round(Number(projectStore.wordCount) || 800);
+  const nextValue = Math.round(
+    Number(projectStore.wordCount || projectStore.defaultWordCount) || 800,
+  );
   return nextValue >= 1 ? nextValue : 800;
 });
 

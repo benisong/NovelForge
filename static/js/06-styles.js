@@ -2,18 +2,20 @@
 
 let allStyles=[];
 let selectedStyleId='';
-
-// 预设文风ID列表（不可删除）
-const BUILTIN_STYLE_IDS=new Set(['literary','wuxia','xuanhuan','suspense','urban','romance','scifi','humor']);
+let defaultStyleId='';
 
 async function loadStyles(){
   try{
     const r=await fetch(apiUrl('/api/styles'));const d=await r.json();
     allStyles=d.styles||[];
+    defaultStyleId=(d.default_style_id&&allStyles.find(s=>s.id===d.default_style_id))?d.default_style_id:'';
     if(d.default_word_count) $('wordCountInput').value=d.default_word_count;
     renderStyleGrid();
     const last=localStorage.getItem('nf_style_id');
-    if(last) selectStyle(last, true);
+    if(selectedStyleId&&allStyles.find(s=>s.id===selectedStyleId)) _setSelectedStyle(selectedStyleId, false);
+    else if(last&&allStyles.find(s=>s.id===last)) _setSelectedStyle(last, false);
+    else if(defaultStyleId) _setSelectedStyle(defaultStyleId, false);
+    else _setSelectedStyle('', false);
   }catch(e){console.warn('加载文风失败',e);}
 }
 
@@ -21,7 +23,7 @@ function renderStyleGrid(){
   const grid=$('styleGrid');
   if(!allStyles.length){grid.innerHTML='<div style="font-size:11px;color:var(--text-muted);grid-column:1/-1">无可用文风</div>';return;}
   grid.innerHTML=allStyles.map(s=>{
-    const isCustom=!BUILTIN_STYLE_IDS.has(s.id);
+    const isCustom=!Boolean(s.preset);
     const activeClass=s.id===selectedStyleId?' active':'';
     const customBadge=isCustom?'<span class="sc-custom">自定义</span>':'';
     const actions=isCustom?`<div class="sc-actions"><button onclick="event.stopPropagation();editStyle('${s.id}')">编辑</button><button class="sc-del" onclick="event.stopPropagation();deleteStyle('${s.id}')">删除</button></div>`:'';
@@ -29,23 +31,26 @@ function renderStyleGrid(){
   }).join('');
 }
 
-function selectStyle(id, silent){
-  if(selectedStyleId===id){
-    selectedStyleId='';
-    localStorage.removeItem('nf_style_id');
-    $('stylePreview').classList.remove('show');
+function _setSelectedStyle(id, persist){
+  const keep=persist!==false;
+  const nextId=id&&allStyles.find(s=>s.id===id)?id:'';
+  selectedStyleId=nextId;
+  if(keep){
+    if(nextId) localStorage.setItem('nf_style_id',nextId);
+    else localStorage.removeItem('nf_style_id');
+  }
+  const style=allStyles.find(s=>s.id===nextId);
+  if(style&&style.example){
+    $('stylePreview').textContent=style.example;
+    $('stylePreview').classList.add('show');
   }else{
-    selectedStyleId=id;
-    localStorage.setItem('nf_style_id',id);
-    const style=allStyles.find(s=>s.id===id);
-    if(style&&style.example){
-      $('stylePreview').textContent=style.example;
-      $('stylePreview').classList.add('show');
-    }else{
-      $('stylePreview').classList.remove('show');
-    }
+    $('stylePreview').classList.remove('show');
   }
   renderStyleGrid();
+}
+
+function selectStyle(id, silent){
+  _setSelectedStyle(selectedStyleId===id?'':id, true);
   if(!silent) addLog('system', selectedStyleId?`已选择文风：${allStyles.find(s=>s.id===selectedStyleId)?.name||id}`:'已取消文风选择');
 }
 
@@ -95,7 +100,9 @@ async function deleteStyle(id){
   if(!s)return;
   if(!confirm(`确定删除文风「${s.name}」？`))return;
   allStyles=allStyles.filter(x=>x.id!==id);
-  if(selectedStyleId===id){selectedStyleId='';localStorage.removeItem('nf_style_id');$('stylePreview').classList.remove('show');}
+  if(selectedStyleId===id){
+    _setSelectedStyle(defaultStyleId===id?'':defaultStyleId, false);
+  }
   await _pushStylesToServer();
   renderStyleGrid();
   addLog('system',`已删除文风「${s.name}」`);
@@ -126,7 +133,11 @@ async function saveStyleFromModal(){
 
 async function _pushStylesToServer(){
   try{
-    await fetch(apiUrl('/api/styles'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({styles:allStyles,default_word_count:getWordCount()})});
+    await fetch(apiUrl('/api/styles'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      styles:allStyles.filter(x=>!x.preset),
+      default_word_count:getWordCount(),
+      default_style_id:defaultStyleId||''
+    })});
   }catch(e){console.warn('保存文风失败',e);}
 }
 

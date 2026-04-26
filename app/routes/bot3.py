@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 
 from ..models import Bot3ReviewRequest
 from ..prompts import BOT3_SYSTEM
-from ..styles import _get_style_by_id
+from ..styles import _get_effective_style
 from ..llm import call_llm_full
 from ..config import bot3_prompts_file
 from ..workspace import require_workspace
@@ -71,8 +71,10 @@ async def bot3_review(workspace: str, req: Bot3ReviewRequest):
     system_parts = [base_prompt]
 
     # 2. 目标文风附加（若有）
-    style = _get_style_by_id(workspace, req.style_id) if req.style_id else None
+    style = _get_effective_style(workspace, req.style_id)
     if style:
+        if style.get("instruction"):
+            system_parts.append(f"【默认文风约束】\n{style['instruction']}")
         system_parts.append(
             f"【目标文风：{style['name']}】\n"
             f"风格描述：{style.get('desc', '')}\n"

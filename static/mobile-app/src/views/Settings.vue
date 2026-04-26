@@ -479,7 +479,7 @@ import { useRouter } from 'vue-router';
 import { showConfirmDialog, showToast } from 'vant';
 
 import { createDefaultConfig, useProjectStore } from '@/stores/project';
-import { getWorkspace } from '@/api/url';
+import { apiUrl, getWorkspace } from '@/api/url';
 
 const workspaceSlug = getWorkspace();
 
@@ -524,6 +524,7 @@ const draftStyleId = ref('');
 const isLoadingStyles = ref(false);
 const isSavingStyleDraft = ref(false);
 const stylesDefaultWordCount = ref(800);
+const stylesDefaultStyleId = ref('');
 const styleOptions = ref([]);
 const showStyleEditor = ref(false);
 const showModelPicker = ref(false);
@@ -548,9 +549,12 @@ const activeBotMeta = computed(
   () => botCards.find((item) => item.key === activeBot.value) || botCards[0],
 );
 const normalizedDraftWordCount = computed(() => normalizeWordCount(draftWordCount.value));
+const effectiveDraftStyleId = computed(() =>
+  String(draftStyleId.value || stylesDefaultStyleId.value || '').trim(),
+);
 const selectedStyleMeta = computed(
   () =>
-    styleOptions.value.find((item) => item.id === draftStyleId.value) || null,
+    styleOptions.value.find((item) => item.id === effectiveDraftStyleId.value) || null,
 );
 const customStyleOptions = computed(() =>
   styleOptions.value.filter((item) => !item.preset),
@@ -627,9 +631,10 @@ async function persistCustomStyles() {
   const payload = {
     styles: customStyleOptions.value.map((item) => buildStylePayload(item)),
     default_word_count: stylesDefaultWordCount.value,
+    default_style_id: stylesDefaultStyleId.value,
   };
 
-  const response = await fetch('/api/styles', {
+  const response = await fetch(apiUrl('/api/styles'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -792,7 +797,7 @@ async function loadStyles() {
   isLoadingStyles.value = true;
 
   try {
-    const response = await fetch('/api/styles');
+    const response = await fetch(apiUrl('/api/styles'));
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -800,6 +805,11 @@ async function loadStyles() {
     const data = await response.json();
     styleOptions.value = Array.isArray(data.styles) ? data.styles : [];
     stylesDefaultWordCount.value = normalizeWordCount(data.default_word_count || 800);
+    stylesDefaultStyleId.value = styleOptions.value.some(
+      (item) => item.id === data.default_style_id,
+    )
+      ? String(data.default_style_id || '').trim()
+      : '';
 
     if (
       draftStyleId.value &&
@@ -807,9 +817,13 @@ async function loadStyles() {
     ) {
       draftStyleId.value = '';
     }
+    if (!draftStyleId.value) {
+      draftStyleId.value = stylesDefaultStyleId.value;
+    }
   } catch (error) {
     console.error('加载文风列表失败:', error);
     styleOptions.value = [];
+    stylesDefaultStyleId.value = '';
     showToast('文风列表加载失败');
   } finally {
     isLoadingStyles.value = false;
@@ -825,7 +839,7 @@ async function saveCurrentConfig() {
   const nextWordCount = normalizeWordCount(draftWordCount.value);
   draftWordCount.value = nextWordCount;
   projectStore.wordCount = nextWordCount;
-  projectStore.selectedStyleId = draftStyleId.value;
+  projectStore.selectedStyleId = effectiveDraftStyleId.value;
 
   const configOk = await projectStore.saveConfig(draftConfig.value);
   const projectOk = await projectStore.saveProject({ force: true });

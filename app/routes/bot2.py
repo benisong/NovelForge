@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 
 from ..models import Bot2WriteRequest, Bot2RewriteRequest
 from ..prompts import BOT2_SYSTEM
-from ..styles import _get_style_by_id
+from ..styles import _get_effective_style
 from ..llm import stream_llm
 from ..workspace import require_workspace
 
@@ -35,14 +35,20 @@ def _build_bot2_system(workspace: str, style_id: str = "", word_count: int = 800
     if bot2_context and bot2_context.strip():
         parts.append(bot2_context.strip())
 
-    style = _get_style_by_id(workspace, style_id)
+    style = _get_effective_style(workspace, style_id)
     if style:
-        parts.append(
-            f"【文风要求：{style['name']}】\n{style.get('desc', '')}\n\n"
-            f"以下是该文风的参考示例片段，请深度学习其语言风格、叙事节奏、遣词造句的特点，"
-            f"并在创作中自然运用（不要生搬硬套，要融会贯通）：\n\n"
-            f"---\n{style['example']}\n---"
-        )
+        style_parts = [f"【文风要求：{style['name']}】"]
+        if style.get("desc"):
+            style_parts.append(style["desc"])
+        if style.get("instruction"):
+            style_parts.append(f"以下规则必须优先遵守：\n{style['instruction']}")
+        if style.get("example"):
+            style_parts.append(
+                "以下是该文风的参考示例片段，请学习它的语言风格、叙事节奏与句法密度，"
+                "在创作中自然吸收，不要照抄：\n\n"
+                f"---\n{style['example']}\n---"
+            )
+        parts.append("\n\n".join(style_parts))
 
     if tips and tips.strip():
         parts.append(

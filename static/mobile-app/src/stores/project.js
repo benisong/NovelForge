@@ -134,6 +134,15 @@ async function fetchConfigsFromServer() {
   return configs.map((item) => normalizeConfig(item));
 }
 
+async function fetchStylesFromServer() {
+  const response = await fetch(apiUrl('/api/styles'));
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
 function buildConfigPayload(configValue) {
   return { configs: [normalizeConfig(configValue)] };
 }
@@ -149,6 +158,8 @@ export const useProjectStore = defineStore('project', () => {
   const currentContent = ref('');
   const selectedStyleId = ref('');
   const wordCount = ref(800);
+  const defaultStyleId = ref('');
+  const defaultWordCount = ref(800);
   const reviews = ref([]);
   const summaries = ref([]);
   const bigSummaries = ref([]);
@@ -159,6 +170,37 @@ export const useProjectStore = defineStore('project', () => {
   };
 
   const createConfigDraft = () => cloneValue(config.value || createDefaultConfig());
+
+  const loadStyleDefaults = async () => {
+    try {
+      const data = await fetchStylesFromServer();
+      const styles = Array.isArray(data.styles) ? data.styles : [];
+      const availableStyleIds = new Set(
+        styles
+          .map((item) => String(item?.id || '').trim())
+          .filter(Boolean),
+      );
+      const nextDefaultStyleId = String(data.default_style_id || '').trim();
+      defaultStyleId.value = availableStyleIds.has(nextDefaultStyleId)
+        ? nextDefaultStyleId
+        : '';
+      defaultWordCount.value = normalizeWordCount(data.default_word_count, 800);
+
+      if (!selectedStyleId.value && defaultStyleId.value) {
+        selectedStyleId.value = defaultStyleId.value;
+      }
+      if (!wordCount.value) {
+        wordCount.value = defaultWordCount.value;
+      }
+
+      return { styles, availableStyleIds };
+    } catch (error) {
+      console.error('加载默认文风失败:', error);
+      defaultStyleId.value = '';
+      defaultWordCount.value = 800;
+      return { styles: [], availableStyleIds: new Set() };
+    }
+  };
 
   const loadConfig = async () => {
     try {
@@ -232,6 +274,7 @@ export const useProjectStore = defineStore('project', () => {
   };
 
   const loadProject = async (id) => {
+    const { availableStyleIds } = await loadStyleDefaults();
     let targetId = id || localStorage.getItem('nf_last_project') || '';
 
     if (!targetId) {
@@ -243,6 +286,8 @@ export const useProjectStore = defineStore('project', () => {
     }
 
     if (!targetId) {
+      selectedStyleId.value = defaultStyleId.value;
+      wordCount.value = defaultWordCount.value;
       return false;
     }
 
@@ -259,8 +304,14 @@ export const useProjectStore = defineStore('project', () => {
       currentOutline.value = data.current_outline || '';
       chapterOutline.value = data.chapter_outline || '';
       currentContent.value = data.current_content || '';
-      selectedStyleId.value = String(data.style_id || '').trim();
-      wordCount.value = normalizeWordCount(data.word_count, 800);
+      {
+        const nextStyleId = String(data.style_id || '').trim();
+        selectedStyleId.value =
+          nextStyleId && availableStyleIds.has(nextStyleId)
+            ? nextStyleId
+            : defaultStyleId.value;
+      }
+      wordCount.value = normalizeWordCount(data.word_count, defaultWordCount.value);
       reviews.value = data.reviews || [];
       chapters.value = data.chapters || [];
       summaries.value = data.small_summaries || [];
@@ -335,6 +386,8 @@ export const useProjectStore = defineStore('project', () => {
     currentContent,
     selectedStyleId,
     wordCount,
+    defaultStyleId,
+    defaultWordCount,
     reviews,
     summaries,
     bigSummaries,
@@ -344,6 +397,7 @@ export const useProjectStore = defineStore('project', () => {
     loadConfig,
     saveConfig,
     fetchAvailableModels,
+    loadStyleDefaults,
     loadProject,
     saveProject,
     BOT_KEYS,
