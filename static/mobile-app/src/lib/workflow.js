@@ -7,6 +7,19 @@ const BOT_DEFAULTS = {
   bot4: { temperature: 0.5, max_tokens: 4096 },
 };
 
+const REVIEW_DIM_LABELS = {
+  literary: '文学性',
+  logic: '逻辑性',
+  style: '风格一致性',
+  ai_feel: '人味',
+};
+
+const REVIEW_SEVERITY_ORDER = {
+  high: 0,
+  medium: 1,
+  low: 2,
+};
+
 function hasCoreConfig(botConfig) {
   return Boolean(botConfig?.base_url && botConfig?.api_key && botConfig?.model);
 }
@@ -42,6 +55,22 @@ function stringifySummaryContent(content) {
   }
 
   return String(content);
+}
+
+function normalizeReviewItems(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((item) => ({
+      dim: String(item?.dim || 'literary').trim() || 'literary',
+      severity: String(item?.severity || 'medium').trim() || 'medium',
+      location: String(item?.location || '').trim(),
+      problem: String(item?.problem || '').trim(),
+      suggestion: String(item?.suggestion || '').trim(),
+    }))
+    .filter((item) => item.problem || item.suggestion || item.location);
 }
 
 export function getRuntimeConfig(rawConfig) {
@@ -203,17 +232,81 @@ export function getPreviousEnding(projectStore, maxLength = 500) {
   return content.length <= maxLength ? content : content.slice(-maxLength);
 }
 
-export function formatSuggestionsText(suggestions) {
-  if (!Array.isArray(suggestions) || suggestions.length === 0) {
+export function buildRewriteBrief(reviewLike, passScore = 8) {
+  if (typeof reviewLike === 'string') {
+    return reviewLike.trim();
+  }
+
+  const review = reviewLike && typeof reviewLike === 'object'
+    ? reviewLike
+    : { items: Array.isArray(reviewLike) ? reviewLike : [] };
+  const existing = String(review.rewrite_brief || review.rewrite_plan || '').trim();
+  if (existing) {
+    return existing;
+  }
+
+  const items = normalizeReviewItems(review.items ?? reviewLike);
+  const scores = review?.scores && typeof review.scores === 'object' ? review.scores : {};
+  const analysis = String(review.analysis || '').trim();
+  const failingDims = Object.entries(REVIEW_DIM_LABELS)
+    .filter(([key]) => Number(scores[key] ?? 0) < passScore)
+    .map(([, label]) => label);
+
+  const lines = [];
+  if (failingDims.length > 0) {
+    lines.push(`先把${failingDims.join('、')}拉回及格线，优先处理硬伤，再做润色。`);
+  } else {
+    lines.push('保留当前成稿的优点，只做针对性的局部修正，不要整章推倒重来。');
+  }
+
+  const priorityItems = [...items]
+    .sort((left, right) => {
+      const severityGap =
+        (REVIEW_SEVERITY_ORDER[left.severity] ?? 9) - (REVIEW_SEVERITY_ORDER[right.severity] ?? 9);
+      if (severityGap !== 0) {
+        return severityGap;
+      }
+      return left.dim.localeCompare(right.dim);
+    })
+    .slice(0, 4);
+
+  priorityItems.forEach((item, index) => {
+    const label = REVIEW_DIM_LABELS[item.dim] || item.dim || '问题';
+    const location = item.location || '全文';
+    const action = item.suggestion || item.problem || '请直接重写这一处';
+    lines.push(`${index + 1}. [${label}] ${location}：${action}`);
+  });
+
+  if (analysis) {
+    lines.push(`整体把握：${analysis.split('\n')[0].trim().slice(0, 80)}`);
+  }
+
+  return lines.join('\n').trim();
+}
+
+export function formatSuggestionsText(reviewLike, passScore = 8) {
+  if (typeof reviewLike === 'string') {
+    return reviewLike.trim();
+  }
+
+  const items = normalizeReviewItems(reviewLike?.items ?? reviewLike);
+  if (items.length === 0) {
     return '';
   }
 
-  return suggestions
+  const rewriteBrief = buildRewriteBrief(reviewLike, passScore);
+  const detailText = items
     .map((item, index) => {
       const title = item.location ? `${item.location} - ${item.problem}` : item.problem;
       return `${index + 1}. ${title}\n修改建议：${item.suggestion}`;
     })
     .join('\n\n');
+
+  if (!rewriteBrief) {
+    return detailText;
+  }
+
+  return `【Bot3重写指令】\n${rewriteBrief}\n\n【逐条修改建议】\n${detailText}`.trim();
 }
 
 export function nowString() {

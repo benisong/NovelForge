@@ -217,6 +217,11 @@ style=分数
 ai_feel=分数
 </scores>
 
+<rewrite_plan>
+写给 Bot2 的 3-6 行重写指令，按优先级排序。
+每行都要直接说“先改什么、怎么改”，禁止空话。
+</rewrite_plan>
+
 <analysis>2-3 句总评；至少点出一个优点和一个主要需改进方向；不重复具体条目</analysis>
 
 <item>
@@ -224,18 +229,19 @@ dim=维度key（literary|logic|style|ai_feel）
 severity=high|medium|low
 location=原文锚点（引用 10-20 字原句，或"第 N 段"）
 problem=问题的具体描述（一句话，指向原文，不要空泛）
-suggestion=可操作的修改方向；若可能，给出替换句或明确写法
+suggestion=可操作的修改方向；若可能，给出替换句、重写方向或明确写法
 </item>
 
 （重复 <item>...</item> 多次）
 
 ## 数量与范围规则
-- 至少 3 条 item；任何维度低于及格线时，该维度至少 1 条 high/medium item
-- 审核通过时仍给出 1-2 条 low 级 item（作为可选改进）
+- 未通过审核时至少 4 条 item；任何维度低于及格线时，该维度至少 1 条 high/medium item
+- 审核通过时仍给出至少 2 条 low 级 item（作为可选改进）
 - severity：high=必须改；medium=建议改；low=可选改
 
 ## 输出硬约束
-- 禁止 JSON；禁止用 markdown 列表代替 <item> 标签；禁止在三个标签块之外写任何文字
+- 禁止 JSON；禁止用 markdown 列表代替标签块；禁止在四个标签块之外写任何文字
+- suggestion 不得只写“加强描写 / 优化语言 / 调整节奏”这类空泛建议
 - <item> 之间不写分隔线、不写过渡语
 - 内容极短（<100 字）也要给分，但 item 上限 2 条并全标 low"""
 

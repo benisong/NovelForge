@@ -42,6 +42,11 @@
         </div>
       </div>
 
+      <div class="suggestions-card" v-if="effectiveRewriteBrief">
+        <h3 class="section-title">Bot2 重写指令</h3>
+        <div class="rewrite-brief">{{ effectiveRewriteBrief }}</div>
+      </div>
+
       <div class="suggestions-card" v-if="suggestions.length > 0">
         <h3 class="section-title">修改建议</h3>
         <van-collapse v-model="activeNames" accordion>
@@ -70,7 +75,12 @@
         </van-collapse>
       </div>
 
-      <van-empty v-else description="当前没有待处理建议" image="search" />
+      <div class="score-card" v-if="reviewAnalysis">
+        <h3 class="section-title">综合判断</h3>
+        <div class="analysis-text">{{ reviewAnalysis }}</div>
+      </div>
+
+      <van-empty v-if="!effectiveRewriteBrief && suggestions.length === 0" description="当前没有待处理建议" image="search" />
     </div>
 
     <div class="bottom-actions">
@@ -122,9 +132,9 @@
 import { computed, onMounted, ref } from 'vue';
 import { showConfirmDialog, showToast } from 'vant';
 
-import { useProjectStore } from '@/stores/project';
-import { getRuntimeConfig, nowString } from '@/lib/workflow';
 import { apiUrl, loginUrl } from '@/api/url';
+import { buildRewriteBrief, getRuntimeConfig, nowString } from '@/lib/workflow';
+import { useProjectStore } from '@/stores/project';
 
 const emit = defineEmits(['rewrite', 'approve']);
 
@@ -150,6 +160,8 @@ const scoreList = ref([
   { key: 'ai_feel', label: scoreLabels.ai_feel, value: 0, hasIssue: false },
 ]);
 const suggestions = ref([]);
+const reviewAnalysis = ref('');
+const rewriteBrief = ref('');
 const activeNames = ref('');
 const showEditDialog = ref(false);
 const editingForm = ref({ dim: '', index: -1, problem: '', suggestion: '' });
@@ -179,6 +191,15 @@ const groupedSuggestions = computed(() => {
 
   return Object.entries(groups).map(([key, items]) => ({ key, items }));
 });
+
+const reviewDraft = computed(() => ({
+  scores: Object.fromEntries(scoreList.value.map((item) => [item.key, Number(item.value || 0)])),
+  analysis: reviewAnalysis.value,
+  rewrite_brief: rewriteBrief.value,
+  items: suggestions.value,
+}));
+
+const effectiveRewriteBrief = computed(() => buildRewriteBrief(reviewDraft.value, passScore.value));
 
 const getReviewSignature = (content, styleId = currentStyleId.value) =>
   `${String(styleId || '').trim()}::${String(content || '').trim()}`;
@@ -210,6 +231,8 @@ const applyReview = (review) => {
     problem: item.problem || '',
     suggestion: item.suggestion || '',
   }));
+  reviewAnalysis.value = String(review.analysis || '').trim();
+  rewriteBrief.value = String(review.rewrite_brief || review.rewrite_plan || '').trim();
   activeNames.value = suggestions.value[0]?.dim || '';
 };
 
@@ -222,6 +245,8 @@ const persistReview = () => {
       scores: Object.fromEntries(scoreList.value.map((item) => [item.key, item.value])),
       average: Number(averageScore.value),
       passed: isPassed.value,
+      analysis: reviewAnalysis.value,
+      rewrite_brief: effectiveRewriteBrief.value,
       items: suggestions.value,
     },
   };
@@ -280,6 +305,7 @@ const runReview = async () => {
       window.location.href = loginUrl();
       return;
     }
+
     const review = await response.json();
     if (review.error && !review.scores) {
       throw new Error(review.error);
@@ -352,7 +378,12 @@ const handleRewrite = (type) => {
       persistReview();
       emit('rewrite', {
         type,
-        suggestions: type === 'suggested' ? suggestions.value : [],
+        suggestions: type === 'suggested'
+          ? {
+              ...reviewDraft.value,
+              rewrite_brief: effectiveRewriteBrief.value,
+            }
+          : [],
       });
     })
     .catch(() => {});
@@ -441,7 +472,7 @@ defineExpose({
 }
 
 .section-title {
-  margin: 0;
+  margin: 0 0 12px;
   padding-left: 8px;
   color: #323233;
   font-size: 16px;
@@ -484,6 +515,21 @@ defineExpose({
 :deep(.collapse-title-error .van-cell__title) {
   color: #ee0a24;
   font-weight: 500;
+}
+
+.rewrite-brief,
+.analysis-text {
+  white-space: pre-wrap;
+  line-height: 1.7;
+  color: #323233;
+  font-size: 14px;
+}
+
+.rewrite-brief {
+  padding: 12px;
+  background: #f6fbff;
+  border: 1px solid #cfe8ff;
+  border-radius: 8px;
 }
 
 .suggestion-item {
