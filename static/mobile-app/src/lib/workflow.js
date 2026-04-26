@@ -290,11 +290,11 @@ export function formatSuggestionsText(reviewLike, passScore = 8) {
   }
 
   const items = normalizeReviewItems(reviewLike?.items ?? reviewLike);
+  const rewriteBrief = buildRewriteBrief(reviewLike, passScore);
   if (items.length === 0) {
-    return '';
+    return rewriteBrief ? `【Bot3重写指令】\n${rewriteBrief}` : '';
   }
 
-  const rewriteBrief = buildRewriteBrief(reviewLike, passScore);
   const detailText = items
     .map((item, index) => {
       const title = item.location ? `${item.location} - ${item.problem}` : item.problem;

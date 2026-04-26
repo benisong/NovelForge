@@ -31,6 +31,7 @@ DIM_LABELS = {
     "ai_feel": "人味",
 }
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
+KNOWN_TAGS = ("scores", "rewrite_plan", "analysis", "item", "items")
 
 BOT3_FORMAT_ANCHOR = """## 输出格式硬约束（系统强制，不可覆盖）
 - 只允许输出 <scores>、<rewrite_plan>、<analysis>、<item> 四种标签块，顺序固定
@@ -100,8 +101,17 @@ def _parse_kv_line(line: str) -> tuple[str | None, str | None]:
 
 
 def _extract_tag_block(result: str, tag: str) -> str:
-    matched = re.search(fr"<{tag}>(.*?)</{tag}>", result, re.DOTALL | re.IGNORECASE)
-    return matched.group(1).strip() if matched else ""
+    balanced = re.search(fr"<{tag}>\s*(.*?)\s*</{tag}>", result, re.DOTALL | re.IGNORECASE)
+    if balanced:
+        return balanced.group(1).strip()
+
+    next_tags = "|".join(KNOWN_TAGS)
+    unbalanced = re.search(
+        fr"<{tag}>\s*(.*?)(?=<(?:{next_tags})\b|$)",
+        result,
+        re.DOTALL | re.IGNORECASE,
+    )
+    return unbalanced.group(1).strip() if unbalanced else ""
 
 
 def _normalize_dim(value: str) -> str:
@@ -111,9 +121,7 @@ def _normalize_dim(value: str) -> str:
 
 def _normalize_severity(value: str) -> str:
     text = str(value or "").strip().lower()
-    if text in SEVERITY_ORDER:
-        return text
-    return "medium"
+    return text if text in SEVERITY_ORDER else "medium"
 
 
 def _cleanup_text(value: str) -> str:
@@ -129,6 +137,8 @@ def _normalize_items(items: list[dict]) -> list[dict]:
         if not (problem or suggestion or location):
             continue
 
+        if not problem and suggestion:
+            problem = "该处需要按审核意见重写"
         if not suggestion and problem:
             suggestion = f"围绕“{problem}”直接重写这一处，给出更具体的动作、对白或因果。"
 
@@ -136,7 +146,7 @@ def _normalize_items(items: list[dict]) -> list[dict]:
             {
                 "dim": _normalize_dim(item.get("dim", "literary")),
                 "severity": _normalize_severity(item.get("severity", "medium")),
-                "location": location,
+                "location": location or "全文",
                 "problem": problem or "该处表达或推进存在问题",
                 "suggestion": suggestion or "请直接重写这一处，避免空泛表述。",
             }
@@ -155,16 +165,52 @@ def _parse_scores_block(block: str) -> dict[str, float]:
     return scores
 
 
+def _extract_all_tag_blocks(result: str, tag: str) -> list[str]:
+    blocks = [
+        matched.group(1).strip()
+        for matched in re.finditer(fr"<{tag}>\s*(.*?)\s*</{tag}>", result, re.DOTALL | re.IGNORECASE)
+    ]
+    if blocks:
+        return blocks
+
+    block = _extract_tag_block(result, tag)
+    return [block] if block else []
+
+
+def _parse_item_dicts_from_block(block: str) -> list[dict]:
+    if not block:
+        return []
+
+    prepared = re.sub(
+        r"\s+(?=(?:dim|severity|location|problem|suggestion|维度|严重程度|位置|问题|建议|修改建议)\s*[:=：])",
+        "\n",
+        block.strip(),
+        flags=re.IGNORECASE,
+    )
+
+    items: list[dict] = []
+    current: dict[str, str] = {}
+    for line in prepared.splitlines():
+        key, value = _parse_kv_line(line)
+        if not key or not value:
+            continue
+        if key == "dim" and current:
+            items.append(current)
+            current = {}
+        current[key] = value
+
+    if current:
+        items.append(current)
+
+    return items
+
+
 def _parse_item_blocks(result: str) -> list[dict]:
-    items = []
-    for matched in re.finditer(r"<item>(.*?)</item>", result, re.DOTALL | re.IGNORECASE):
-        item: dict[str, str] = {}
-        for line in matched.group(1).strip().splitlines():
-            key, value = _parse_kv_line(line)
-            if key and value:
-                item[key] = value
-        items.append(item)
-    return _normalize_items(items)
+    raw_items: list[dict] = []
+    for tag in ("item", "items"):
+        for block in _extract_all_tag_blocks(result, tag):
+            raw_items.extend(_parse_item_dicts_from_block(block))
+    return _normalize_items(raw_items)
 
 
 def _parse_json_fallback(result: str) -> tuple[dict[str, float], str, str, list[dict]]:
@@ -232,9 +278,70 @@ def _regex_score_fallback(result: str, scores: dict[str, float]) -> dict[str, fl
 
 
 def _fallback_analysis(result: str) -> str:
-    cleaned = re.sub(r"<\w+>.*?</\w+>", "", result, flags=re.DOTALL).strip()
-    lines = [line.strip() for line in cleaned.splitlines() if line.strip() and len(line.strip()) > 10]
+    cleaned = re.sub(
+        r"</?(?:scores|rewrite_plan|analysis|item|items)\b[^>]*>",
+        "\n",
+        result,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"(?im)^\s*(literary|logic|style|ai_feel|dim|severity|location|problem|suggestion|"
+        r"文学性|逻辑性|风格一致性|风格|人味|维度|严重程度|位置|问题|建议|修改建议)\s*[:=：].*$",
+        "",
+        cleaned,
+    )
+    lines = [line.strip(" -•*\t") for line in cleaned.splitlines()]
+    lines = [line for line in lines if line and len(line) > 6]
     return lines[0][:200] if lines else ""
+
+
+def _rewrite_plan_lines(rewrite_plan: str) -> list[str]:
+    if not rewrite_plan:
+        return []
+
+    prepared = rewrite_plan.replace("\r\n", "\n").replace("\r", "\n")
+    if "\n" not in prepared:
+        prepared = re.sub(r"(?<=[。；;])\s+", "\n", prepared)
+
+    lines = []
+    for raw_line in prepared.splitlines():
+        line = raw_line.strip()
+        line = re.sub(r"^[\-\*\d\.\)\(、\s]+", "", line)
+        line = _cleanup_text(line)
+        if line:
+            lines.append(line)
+    return lines[:6]
+
+
+def _infer_dim_from_text(text: str) -> str:
+    lowered = text.lower()
+    if any(token in lowered for token in ("逻辑", "因果", "动机", "设定", "前后")):
+        return "logic"
+    if any(token in lowered for token in ("风格", "语气", "文风", "口吻", "一致")):
+        return "style"
+    if any(token in lowered for token in ("ai", "人味", "陈词", "欧化", "翻译腔", "比喻", "对仗")):
+        return "ai_feel"
+    return "literary"
+
+
+def _items_from_rewrite_plan(rewrite_plan: str) -> list[dict]:
+    lines = _rewrite_plan_lines(rewrite_plan)
+    if not lines:
+        return []
+
+    synthetic_items = []
+    for index, line in enumerate(lines):
+        severity = "high" if index < 2 else "medium" if index < 4 else "low"
+        synthetic_items.append(
+            {
+                "dim": _infer_dim_from_text(line),
+                "severity": severity,
+                "location": "全文",
+                "problem": f"需要优先处理这项重写指令：{line[:60]}",
+                "suggestion": line,
+            }
+        )
+    return _normalize_items(synthetic_items)
 
 
 def _select_priority_items(scores: dict[str, float], items: list[dict], limit: int = 4) -> list[dict]:
@@ -267,7 +374,7 @@ def _build_rewrite_brief(
     failing_dims = [DIM_LABELS[key] for key in DIM_KEYS if scores.get(key, 0) < pass_score]
     lines: list[str] = []
     if failing_dims:
-        lines.append(f"先把{ '、'.join(failing_dims) }拉回及格线，优先处理硬伤，再做润色。")
+        lines.append(f"先把{'、'.join(failing_dims)}拉回及格线，优先处理硬伤，再做润色。")
     else:
         lines.append("保留当前成稿的优点，只做针对性的局部修正，不要整章推倒重来。")
 
@@ -284,7 +391,7 @@ def _build_rewrite_brief(
             lines.append(f"整体把握：{analysis_hint}")
 
     if not items:
-        lines.append("请重新审视主要问题段落，给出更具体的改写方案，而不是只保留分数。")
+        lines.append("请重新审视主要问题段落，补出可直接执行的重写方案，而不是只保留分数。")
 
     return "\n".join(lines[:6]).strip()
 
@@ -313,6 +420,9 @@ def _parse_bot3_tags(result: str, pass_score: float) -> dict:
 
     if not analysis:
         analysis = _fallback_analysis(result)
+
+    if not items and rewrite_plan:
+        items = _items_from_rewrite_plan(rewrite_plan)
 
     if len([key for key in DIM_KEYS if key in scores]) >= 4:
         values = [scores.get(key, 0) for key in DIM_KEYS]

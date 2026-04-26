@@ -321,6 +321,12 @@ function readEditedReview() {
     return `${index + 1}. [${sevLabel}][${dimLabel}] 位置：${item.location || '全文'}\n   问题：${item.problem}\n   建议：${item.suggestion}`;
   }).join('\n\n');
 
+  const combinedSuggestions = rewriteBrief
+    ? suggestionsText
+      ? `【Bot3重写指令】\n${rewriteBrief}\n\n【逐条修改建议】\n${suggestionsText}`
+      : `【Bot3重写指令】\n${rewriteBrief}`
+    : suggestionsText;
+
   return {
     scores,
     average,
@@ -328,9 +334,7 @@ function readEditedReview() {
     analysis,
     rewrite_brief: rewriteBrief,
     items,
-    suggestions: rewriteBrief
-      ? `【Bot3重写指令】\n${rewriteBrief}\n\n【逐条修改建议】\n${suggestionsText}`.trim()
-      : suggestionsText,
+    suggestions: combinedSuggestions.trim(),
   };
 }
 
