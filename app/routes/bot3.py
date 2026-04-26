@@ -166,38 +166,77 @@ def _parse_scores_block(block: str) -> dict[str, float]:
 
 
 def _extract_all_tag_blocks(result: str, tag: str) -> list[str]:
-    blocks = [
+    open_count = len(re.findall(fr"<{tag}\b[^>]*>", result, re.IGNORECASE))
+    if open_count == 0:
+        return []
+
+    balanced = [
         matched.group(1).strip()
         for matched in re.finditer(fr"<{tag}>\s*(.*?)\s*</{tag}>", result, re.DOTALL | re.IGNORECASE)
     ]
-    if blocks:
-        return blocks
+    balanced = [block for block in balanced if block]
+    if balanced and len(balanced) >= open_count:
+        return balanced
 
-    block = _extract_tag_block(result, tag)
-    return [block] if block else []
+    next_tags = "|".join(KNOWN_TAGS)
+    blocks: list[str] = []
+    for matched in re.finditer(
+        fr"<{tag}>\s*(.*?)(?=</?(?:{next_tags})\b|$)",
+        result,
+        re.DOTALL | re.IGNORECASE,
+    ):
+        block = matched.group(1).strip()
+        block = re.sub(fr"</{tag}>\s*$", "", block, flags=re.IGNORECASE).strip()
+        if block:
+            blocks.append(block)
+    return blocks or balanced
+
+
+_FIELD_KEYS_RE = (
+    r"(?:dim|severity|location|problem|suggestion|"
+    r"维度|严重程度|位置|问题|建议|修改建议)"
+)
 
 
 def _parse_item_dicts_from_block(block: str) -> list[dict]:
     if not block:
         return []
 
-    prepared = re.sub(
-        r"\s+(?=(?:dim|severity|location|problem|suggestion|维度|严重程度|位置|问题|建议|修改建议)\s*[:=：])",
-        "\n",
+    # Strip any nested structural tags (e.g. inner <item> when block came from <items>)
+    cleaned = re.sub(
+        fr"</?(?:{'|'.join(KNOWN_TAGS)})\b[^>]*>",
+        "",
         block.strip(),
+        flags=re.IGNORECASE,
+    )
+
+    prepared = re.sub(
+        fr"[\s；;,，、]+(?={_FIELD_KEYS_RE}\s*[:=：])",
+        "\n",
+        cleaned,
         flags=re.IGNORECASE,
     )
 
     items: list[dict] = []
     current: dict[str, str] = {}
-    for line in prepared.splitlines():
-        key, value = _parse_kv_line(line)
-        if not key or not value:
+    current_key: str | None = None
+
+    for raw_line in prepared.splitlines():
+        line = raw_line.strip()
+        if not line:
             continue
-        if key == "dim" and current:
-            items.append(current)
-            current = {}
-        current[key] = value
+
+        key, value = _parse_kv_line(line)
+        if key:
+            if key == "dim" and current:
+                items.append(current)
+                current = {}
+            if value:
+                current[key] = value
+            current_key = key
+        elif current_key:
+            existing = current.get(current_key, "")
+            current[current_key] = f"{existing} {line}".strip() if existing else line
 
     if current:
         items.append(current)
@@ -207,9 +246,20 @@ def _parse_item_dicts_from_block(block: str) -> list[dict]:
 
 def _parse_item_blocks(result: str) -> list[dict]:
     raw_items: list[dict] = []
+    seen: set[tuple] = set()
     for tag in ("item", "items"):
         for block in _extract_all_tag_blocks(result, tag):
-            raw_items.extend(_parse_item_dicts_from_block(block))
+            for item in _parse_item_dicts_from_block(block):
+                fingerprint = (
+                    str(item.get("dim", "")).strip().lower(),
+                    str(item.get("severity", "")).strip().lower(),
+                    _cleanup_text(item.get("location", ""))[:40],
+                    _cleanup_text(item.get("problem", ""))[:40],
+                )
+                if fingerprint in seen:
+                    continue
+                seen.add(fingerprint)
+                raw_items.append(item)
     return _normalize_items(raw_items)
 
 
@@ -427,18 +477,20 @@ def _parse_bot3_tags(result: str, pass_score: float) -> dict:
     if len([key for key in DIM_KEYS if key in scores]) >= 4:
         values = [scores.get(key, 0) for key in DIM_KEYS]
         average = round(sum(values) / 4, 1)
+
         if not items:
-            items = _normalize_items(
-                [
-                    {
-                        "dim": "literary",
-                        "severity": "medium",
-                        "location": "全文",
-                        "problem": "未提取到逐条修改建议",
-                        "suggestion": "请重新审视问题段落，补出可直接执行的重写方案。",
-                    }
-                ]
-            )
+            return {
+                "scores": {key: scores.get(key, 0) for key in DIM_KEYS},
+                "average": average,
+                "passed": average >= pass_score,
+                "analysis": analysis or "（审核完成，但未提取到逐条修改建议）",
+                "rewrite_brief": (
+                    "Bot3 这次没有给出可解析的逐条建议或重写计划。"
+                    "请展开下方“AI 原始回复”人工补建议，或点“再次审核”重新跑一次。"
+                ),
+                "items": [],
+                "retry_hint": True,
+            }
 
         rewrite_brief = _build_rewrite_brief(scores, items, analysis, pass_score, rewrite_plan)
         return {

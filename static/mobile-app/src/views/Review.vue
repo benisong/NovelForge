@@ -80,22 +80,58 @@
         <div class="analysis-text">{{ reviewAnalysis }}</div>
       </div>
 
-      <van-empty v-if="!effectiveRewriteBrief && suggestions.length === 0" description="当前没有待处理建议" image="search" />
+      <div class="raw-preview-card" v-if="rawPreview">
+        <details :open="parseFailed">
+          <summary class="raw-preview-summary" :class="{ 'is-warning': parseFailed }">
+            <van-icon :name="parseFailed ? 'warning-o' : 'description'" size="14" />
+            {{ parseFailed ? 'Bot3 解析未抓到逐条建议 — 点开查看 AI 原始回复' : 'AI 原始回复（调试用）' }}
+          </summary>
+          <pre class="raw-preview-text">{{ rawPreview }}</pre>
+        </details>
+      </div>
+
+      <van-empty v-if="!effectiveRewriteBrief && suggestions.length === 0 && !rawPreview" description="当前没有待处理建议" image="search" />
     </div>
 
-    <div class="bottom-actions">
+    <div class="bottom-actions" :class="{ 'is-passed': isPassed }">
       <template v-if="!isPassed">
         <van-button icon="replay" type="warning" class="action-btn" @click="handleRewrite('all')">
           全部重写
         </van-button>
-        <van-button icon="edit" type="primary" class="action-btn" @click="handleRewrite('suggested')">
+        <van-button
+          icon="edit"
+          type="primary"
+          class="action-btn"
+          :disabled="suggestions.length === 0"
+          @click="handleRewrite('suggested')"
+        >
           按建议重写
         </van-button>
       </template>
 
       <template v-else>
-        <van-button icon="replay" type="default" class="action-btn" @click="handleRewrite('all')">
-          仍要重写
+        <van-button
+          icon="replay"
+          type="primary"
+          plain
+          class="action-btn"
+          :loading="isLoading"
+          @click="runReview({ force: true })"
+        >
+          再次审核
+        </van-button>
+        <van-button
+          icon="edit"
+          type="primary"
+          plain
+          class="action-btn"
+          :disabled="suggestions.length === 0"
+          @click="handleRewrite('suggested')"
+        >
+          按建议优化
+        </van-button>
+        <van-button icon="replay" type="warning" class="action-btn" @click="handleRewrite('all')">
+          仍要全部重写
         </van-button>
         <van-button icon="passed" type="success" class="action-btn" @click="handleApprove">
           通过并总结
@@ -167,6 +203,8 @@ const showEditDialog = ref(false);
 const editingForm = ref({ dim: '', index: -1, problem: '', suggestion: '' });
 const isLoading = ref(false);
 const lastReviewedSignature = ref('');
+const rawPreview = ref('');
+const retryHint = ref(false);
 
 const passScore = computed(() => Number(projectStore.config?.pass_score ?? 8));
 const currentStyleId = computed(() =>
@@ -179,6 +217,12 @@ const averageScore = computed(() => {
 });
 
 const isPassed = computed(() => Number(averageScore.value) >= passScore.value);
+
+const parseFailed = computed(() =>
+  retryHint.value
+  || Number(averageScore.value) === 0
+  || (Boolean(rawPreview.value) && suggestions.value.length === 0),
+);
 
 const groupedSuggestions = computed(() => {
   const groups = {};
@@ -234,6 +278,8 @@ const applyReview = (review) => {
   reviewAnalysis.value = String(review.analysis || '').trim();
   rewriteBrief.value = String(review.rewrite_brief || review.rewrite_plan || '').trim();
   activeNames.value = suggestions.value[0]?.dim || '';
+  rawPreview.value = String(review._raw_preview || '').trim();
+  retryHint.value = Boolean(review.retry_hint);
 };
 
 const persistReview = () => {
@@ -248,6 +294,8 @@ const persistReview = () => {
       analysis: reviewAnalysis.value,
       rewrite_brief: effectiveRewriteBrief.value,
       items: suggestions.value,
+      _raw_preview: rawPreview.value,
+      retry_hint: retryHint.value,
     },
   };
 
@@ -261,7 +309,7 @@ const persistReview = () => {
   }
 };
 
-const runReview = async () => {
+const runReview = async ({ force = false } = {}) => {
   if (isLoading.value) {
     return;
   }
@@ -273,9 +321,9 @@ const runReview = async () => {
     return;
   }
 
-  if (lastReviewedSignature.value === reviewSignature && projectStore.reviews.length > 0) {
+  if (!force && lastReviewedSignature.value === reviewSignature && projectStore.reviews.length > 0) {
     const cachedReview = findPersistedReview(reviewSignature)?.review;
-    if (cachedReview) {
+    if (cachedReview && !cachedReview.retry_hint) {
       applyReview(cachedReview);
       return;
     }
@@ -578,16 +626,61 @@ defineExpose({
   border-left: 2px solid #07c160;
 }
 
-.bottom-actions {
+.raw-preview-card {
+  padding: 12px 16px;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.raw-preview-summary {
   display: flex;
-  gap: 12px;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: #646566;
+  font-size: 13px;
+  list-style: none;
+}
+
+.raw-preview-summary::-webkit-details-marker {
+  display: none;
+}
+
+.raw-preview-summary.is-warning {
+  color: #ee0a24;
+  font-weight: 500;
+}
+
+.raw-preview-text {
+  margin: 10px 0 0;
+  padding: 10px;
+  max-height: 320px;
+  overflow: auto;
+  background: #f7f8fa;
+  border-radius: 6px;
+  color: #323233;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.bottom-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
   padding: 12px 16px;
   background-color: #fff;
   border-top: 1px solid #ebedf0;
   flex-shrink: 0;
 }
 
+.bottom-actions.is-passed {
+  gap: 8px 10px;
+}
+
 .action-btn {
-  flex: 1;
+  width: 100%;
 }
 </style>

@@ -114,9 +114,9 @@ function renderReviewPanel(review, attempt, editable, showActions){
   }
 
   let rawHtml = '';
-  if (review._raw_preview && review.average === 0 && review.retry_hint) {
-    rawHtml = `<details style="margin-top:10px;border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--bg-card)">
-      <summary style="cursor:pointer;font-size:12px;color:var(--accent-red);font-weight:600">&#9888; 解析失败 - 点击查看AI原始回复</summary>
+  if (review._raw_preview && review.retry_hint) {
+    rawHtml = `<details open style="margin-top:10px;border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--bg-card)">
+      <summary style="cursor:pointer;font-size:12px;color:var(--accent-red);font-weight:600">&#9888; Bot3 未给出可解析的逐条建议 - 点击查看 AI 原始回复</summary>
       <pre style="margin-top:6px;white-space:pre-wrap;word-break:break-all;font-size:11px;max-height:300px;overflow:auto;color:var(--text-muted)">${_escHtml(review._raw_preview)}</pre>
     </details>`;
   }
