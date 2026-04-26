@@ -34,6 +34,32 @@ def _extract_upstream_detail(body: str) -> str:
     return body.strip()
 
 
+def _should_retry_without_temperature(status_code: int, body: str) -> bool:
+    if status_code != 400:
+        return False
+
+    detail = _extract_upstream_detail(body).lower()
+    return "temperature" in detail and "deprecated" in detail
+
+
+def _build_payload(
+    config: BotConfig,
+    messages: list[dict],
+    *,
+    stream: bool,
+    include_temperature: bool,
+) -> dict:
+    payload = {
+        "model": config.model,
+        "messages": messages,
+        "max_tokens": config.max_tokens,
+        "stream": stream,
+    }
+    if include_temperature:
+        payload["temperature"] = config.temperature
+    return payload
+
+
 def _upstream_error_message(status_code: int, body: str) -> str:
     """Convert upstream errors into concise user-facing messages."""
     logger.warning("Upstream API error HTTP %s: %s", status_code, body[:500])
@@ -62,35 +88,45 @@ async def stream_llm(config: BotConfig, messages: list[dict]):
         "Authorization": f"Bearer {config.api_key}",
         "Content-Type": "application/json",
     }
-    payload = {
-        "model": config.model,
-        "messages": messages,
-        "temperature": config.temperature,
-        "max_tokens": config.max_tokens,
-        "stream": True,
-    }
 
     has_content = False
     try:
         async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
-            async with client.stream("POST", url, json=payload, headers=headers) as resp:
-                if resp.status_code != 200:
-                    body = (await resp.aread()).decode(errors="replace")
-                    raise Exception(_upstream_error_message(resp.status_code, body))
-                async for line in resp.aiter_lines():
-                    if line.startswith("data: "):
-                        data = line[6:].strip()
-                        if data == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data)
-                            delta = chunk["choices"][0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                has_content = True
-                                yield content
-                        except (json.JSONDecodeError, KeyError, IndexError):
+            include_temperature = True
+            while True:
+                payload = _build_payload(
+                    config,
+                    messages,
+                    stream=True,
+                    include_temperature=include_temperature,
+                )
+                async with client.stream("POST", url, json=payload, headers=headers) as resp:
+                    if resp.status_code != 200:
+                        body = (await resp.aread()).decode(errors="replace")
+                        if include_temperature and _should_retry_without_temperature(resp.status_code, body):
+                            logger.info(
+                                "Retrying upstream stream request without temperature for model %s",
+                                config.model,
+                            )
+                            include_temperature = False
                             continue
+                        raise Exception(_upstream_error_message(resp.status_code, body))
+
+                    async for line in resp.aiter_lines():
+                        if line.startswith("data: "):
+                            data = line[6:].strip()
+                            if data == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data)
+                                delta = chunk["choices"][0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    has_content = True
+                                    yield content
+                            except (json.JSONDecodeError, KeyError, IndexError):
+                                continue
+                    break
     except httpx.TimeoutException:
         raise Exception("API 请求超时（3分钟），请检查网络后重试")
     except httpx.ConnectError:
@@ -111,17 +147,28 @@ async def call_llm_full(config: BotConfig, messages: list[dict]) -> str:
         "Authorization": f"Bearer {config.api_key}",
         "Content-Type": "application/json",
     }
-    payload = {
-        "model": config.model,
-        "messages": messages,
-        "temperature": config.temperature,
-        "max_tokens": config.max_tokens,
-        "stream": False,
-    }
 
     try:
         async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
-            resp = await client.post(url, json=payload, headers=headers)
+            include_temperature = True
+            while True:
+                payload = _build_payload(
+                    config,
+                    messages,
+                    stream=False,
+                    include_temperature=include_temperature,
+                )
+                resp = await client.post(url, json=payload, headers=headers)
+                if resp.status_code != 200:
+                    if include_temperature and _should_retry_without_temperature(resp.status_code, resp.text):
+                        logger.info(
+                            "Retrying upstream request without temperature for model %s",
+                            config.model,
+                        )
+                        include_temperature = False
+                        continue
+                    raise Exception(_upstream_error_message(resp.status_code, resp.text))
+                break
     except httpx.TimeoutException:
         raise Exception("API 请求超时（3分钟），请检查网络后重试")
     except httpx.ConnectError:
@@ -129,9 +176,6 @@ async def call_llm_full(config: BotConfig, messages: list[dict]) -> str:
     except httpx.RequestError as e:
         logger.warning("Network request failed: %s", e)
         raise Exception(f"网络请求失败: {type(e).__name__}")
-
-    if resp.status_code != 200:
-        raise Exception(_upstream_error_message(resp.status_code, resp.text))
 
     try:
         data = resp.json()
