@@ -501,9 +501,8 @@ def _parse_bot3_tags(result: str, pass_score: float) -> dict:
                 "passed": False,
                 "analysis": "（Bot3 回复中途被截断，结果不完整）",
                 "rewrite_brief": (
-                    "Bot3 回复被截断，最常见原因是 Bot3 的 max_tokens 太小。"
-                    "请到设置页把 Bot3 的 max_tokens 调到 16384（默认值）或更高，"
-                    "再点“再次审核”重新跑一次。"
+                    "Bot3 回复在 16384 token 硬上限内被截断，多半是输入太长或模型生成过于冗余。"
+                    "建议缩短章节内容（缩字数或先用 Bot4 摘要压缩前情）后，再点“再次审核”重新跑一次。"
                 ),
                 "items": [],
                 "retry_hint": True,

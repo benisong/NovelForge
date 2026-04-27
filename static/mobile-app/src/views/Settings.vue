@@ -111,7 +111,7 @@
         <div class="field-stack">
           <label class="field-card">
             <span class="field-label">目标字数</span>
-            <span class="field-hint">告诉 Bot2 本章写约 {{ normalizedDraftWordCount }} 字（创作目标，不是硬上限）。如果生成被截断，去调高 Bot2 的 max_tokens —— 那是 AI 单次回复的 token 上限（≠ 字数，1 汉字大致 1.5 token，建议 ≥ 字数 × 1.5）。</span>
+            <span class="field-hint">告诉 Bot2 本章写约 {{ normalizedDraftWordCount }} 字（创作目标）。AI 单次回复硬上限固定 16384 token（约 1 万汉字），单章不要超过这个量级。</span>
             <input
               v-model="draftWordCount"
               class="field-input"

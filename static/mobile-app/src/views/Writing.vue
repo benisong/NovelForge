@@ -86,7 +86,7 @@ const requestStyleId = computed(() =>
   String(projectStore.selectedStyleId || projectStore.defaultStyleId || '').trim(),
 );
 const requestWordCount = computed(() => {
-  // 字数是创作目标，不是硬上限；硬上限由 Bot2 max_tokens (AI 回复 token 上限) 决定
+  // 字数是创作目标，AI 单次回复硬上限固定 16384 token（约 1 万汉字），见 app/llm.py MAX_OUTPUT_TOKENS
   const nextValue = Math.round(
     Number(projectStore.wordCount || projectStore.defaultWordCount) || 800,
   );

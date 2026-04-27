@@ -10,6 +10,12 @@ from .models import BotConfig
 
 logger = logging.getLogger(__name__)
 
+# 统一的 AI 单次回复 token 硬上限。
+# 用户不需要在 UI 上自己调 max_tokens —— 16384 对绝大多数现代模型都够用，
+# 模型本身能给的更高上限由 provider 自行裁剪。任何 BotConfig 里读到的
+# max_tokens 都会被这个常量覆盖，避免因历史配置过低导致响应被截断。
+MAX_OUTPUT_TOKENS = 16384
+
 
 def _extract_upstream_detail(body: str) -> str:
     try:
@@ -52,7 +58,7 @@ def _build_payload(
     payload = {
         "model": config.model,
         "messages": messages,
-        "max_tokens": config.max_tokens,
+        "max_tokens": MAX_OUTPUT_TOKENS,
         "stream": stream,
     }
     if include_temperature:
