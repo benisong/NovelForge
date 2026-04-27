@@ -15,6 +15,10 @@ const S = {
   abortCtrl: null,
   isGenerating: false,
   pipelineState: null,
+  // chat_history 中的"章节边界"下标。Bot4 完成时设为 chatHistory.length。
+  // recalcOutlineFromHistory 只在 i >= chapterBoundaryIdx 的范围内回填 chapter_outline，
+  // 防止已完成章节的 <chapter_outline> 在新章节里被误显示。
+  chapterBoundaryIdx: 0,
 };
 
 const $ = id => document.getElementById(id);

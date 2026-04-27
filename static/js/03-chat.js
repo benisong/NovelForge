@@ -188,19 +188,22 @@ function rebuildChatUI(){
 }
 
 function recalcOutlineFromHistory(){
+  // 总大纲（currentOutline）是全书的，从全部历史里找最新的；
+  // 章节大纲（chapterOutline）只属于当前章节，必须从 chapterBoundaryIdx 之后找，
+  // 否则上一章已完成的 <chapter_outline> 会被错当成本章的显示出来。
+  const minChapterIdx=S.chapterBoundaryIdx||0;
   let foundGlobal=false, foundChapter=false;
   for(let i=S.chatHistory.length-1;i>=0;i--){
-    if(S.chatHistory[i].role==='assistant'){
-      if(!foundGlobal){
-        const ol=extractOutline(S.chatHistory[i].content);
-        if(ol){S.currentOutline=ol;$('outlinePreview').textContent=ol;$('outlinePreview').className='outline-body';foundGlobal=true;}
-      }
-      if(!foundChapter){
-        const col=extractChapterOutline(S.chatHistory[i].content);
-        if(col){S.chapterOutline=col;$('chapterOutlinePreview').textContent=col;$('chapterOutlinePreview').className='outline-body';foundChapter=true;}
-      }
-      if(foundGlobal&&foundChapter) break;
+    if(S.chatHistory[i].role!=='assistant') continue;
+    if(!foundGlobal){
+      const ol=extractOutline(S.chatHistory[i].content);
+      if(ol){S.currentOutline=ol;$('outlinePreview').textContent=ol;$('outlinePreview').className='outline-body';foundGlobal=true;}
     }
+    if(!foundChapter && i>=minChapterIdx){
+      const col=extractChapterOutline(S.chatHistory[i].content);
+      if(col){S.chapterOutline=col;$('chapterOutlinePreview').textContent=col;$('chapterOutlinePreview').className='outline-body';foundChapter=true;}
+    }
+    if(foundGlobal&&foundChapter) break;
   }
   if(!foundGlobal){S.currentOutline='';$('outlinePreview').textContent='总大纲将在对话过程中自动生成和更新';$('outlinePreview').className='outline-body empty';}
   if(!foundChapter){S.chapterOutline='';$('chapterOutlinePreview').textContent='章节大纲将在讨论中生成';$('chapterOutlinePreview').className='outline-body empty';}

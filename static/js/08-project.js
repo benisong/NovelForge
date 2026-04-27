@@ -65,6 +65,7 @@ async function saveProject(silent){
     accumulated_tips:S.accumulatedTips||[],
     small_summaries:S.smallSummaries||[],
     big_summaries:S.bigSummaries||[],
+    chapter_boundary_idx:S.chapterBoundaryIdx||0,
   };
   try{const r=await fetch(apiUrl('/api/projects/save'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(d.ok){localStorage.setItem('nf_last_project',currentProjectId);if(!silent){addLog('system',`项目「${name}」已保存`);}loadProjectList();}else{if(!silent)addLog('error','保存失败');}}
   catch(e){if(!silent)addLog('error',`保存失败: ${e.message}`);}
@@ -94,6 +95,7 @@ function saveProjectSync(){
     accumulated_tips:S.accumulatedTips||[],
     small_summaries:S.smallSummaries||[],
     big_summaries:S.bigSummaries||[],
+    chapter_boundary_idx:S.chapterBoundaryIdx||0,
   };
   navigator.sendBeacon('/api/projects/save', new Blob([JSON.stringify(body)],{type:'application/json'}));
   localStorage.setItem('nf_last_project',currentProjectId);
@@ -143,6 +145,7 @@ async function loadProject(pid){
     S.accumulatedTips=d.accumulated_tips||[];
     S.smallSummaries=d.small_summaries||[];
     S.bigSummaries=d.big_summaries||[];
+    S.chapterBoundaryIdx=Number(d.chapter_boundary_idx)||0;
 
     // 恢复聊天UI
     rebuildChatUI();
@@ -333,6 +336,7 @@ function resetProjectState(){
   S.smallSummaries=[];S.bigSummaries=[];
   S.currentOutline='';S.chapterOutline='';S.currentContent='';S.currentSummary='';
   S.pipelineState=null;
+  S.chapterBoundaryIdx=0;
   rebuildChatUI();updateChapterList();
   $('outlinePreview').textContent='总大纲将在对话过程中自动生成和更新';$('outlinePreview').className='outline-body empty';
   $('chapterOutlinePreview').textContent='章节大纲将在讨论中生成';$('chapterOutlinePreview').className='outline-body empty';

@@ -128,3 +128,6 @@ class SaveProjectRequest(BaseModel):
     accumulated_tips: list[str] = []
     small_summaries: list[dict] = []   # [{chapter, condensed, abstract, time}]
     big_summaries: list[dict] = []     # [{fromChapter, toChapter, content, time}]
+    # 章节边界标记：chat_history 中的下标，<= 此值的消息属于已完成章节，
+    # 不应该再用来回填 chapter_outline。Bot4 完成时设为 chat_history.length。
+    chapter_boundary_idx: int = 0

@@ -249,6 +249,21 @@ async function _runBot4(content, config, context, attempt){
   updateChapterList();$('chapterInfo').textContent=`第${chapterNum}章已完成`;$('retryInfo').textContent='';
   S.pipelineState=null;
   setStatus('ready','创作完成');addLog('system',`第${chapterNum}章创作完成！`);resetPipeline();_autoSaveAfterChapter();
+
+  // 章节归档：清掉本章的章节大纲和正文显示，给下一章腾出干净工作区。
+  // 总大纲（currentOutline）保留 —— 它是全书规划，不是单章数据。
+  // chapterBoundaryIdx 标记 chat_history 边界：之后 recalcOutlineFromHistory
+  // 不会再把上一章的 <chapter_outline> 拉回来显示。
+  S.chapterBoundaryIdx=S.chatHistory.length;
+  S.chapterOutline='';
+  S.currentContent='';
+  const _chOutEl=$('chapterOutlinePreview');
+  if(_chOutEl){_chOutEl.textContent='章节大纲将在讨论中生成';_chOutEl.className='outline-body empty';}
+  const _contentEl=$('contentOutput');
+  if(_contentEl){_contentEl.textContent='等待Bot2创作内容...';_contentEl.className='output-area empty';}
+  const _wcEl=$('wordCount');
+  if(_wcEl){_wcEl.textContent='字数：0';}
+
   promptBot1NextChapter(chapterNum);
 }
 
