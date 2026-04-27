@@ -175,7 +175,7 @@ async function loadProject(pid){
     // 检测并恢复中断的Pipeline
     if(d.pipeline_state&&d.pipeline_state.stage){
       const ps=d.pipeline_state;
-      const stageNames={bot2:'Bot2创作',bot3:'Bot3审核',bot4:'Bot4总结'};
+      const stageNames={bot2:'Bot2创作',bot3:'Bot3审核',bot3_decision:'Bot3审核（等待决策）',bot4:'Bot4总结'};
       const stageName=stageNames[ps.stage]||ps.stage;
       addLog('system',`检测到上次中断的流水线：${stageName}（第${ps.attempt}次）`);
       showPipelineResumePrompt(ps, stageName);
@@ -227,8 +227,39 @@ async function resumePipelineFromSaved(ps){
     await runPipeline(ps.attempt, fullState.currentContent, config, fullState.context);
   }else if(ps.stage==='bot3'){
     await retryBot3AndContinue(fullState);
+  }else if(ps.stage==='bot3_decision'){
+    await resumePipelineAtBot3Decision(fullState);
   }else if(ps.stage==='bot4'){
     await retryBot4(fullState);
+  }
+}
+
+// 从 bot3_decision 阶段恢复：Bot3 审核已完成、等待用户决定 accept / rewrite / full_rewrite。
+// 历史 review 已经在 rebuildReviewHistoryUI 里渲染过但没带操作按钮——这里带按钮重渲一次，
+// 然后等用户点按钮，按结果走和 retryBot3AndContinue 末尾完全一致的分支。
+async function resumePipelineAtBot3Decision(ps){
+  switchTab('review');
+  if(S.reviews.length>0){
+    const last=S.reviews[S.reviews.length-1];
+    renderReviewPanel(last.review,last.attempt,true,true);
+  }
+  setStatus('ready',`审核结果已恢复（第${ps.attempt}次）- 请选择下一步操作`);
+  S.pipelineState=ps;
+
+  const decision=await waitForUserDecision();
+  _userDecisionResolve=null;
+
+  if(decision==='accept'){
+    showBot2Toolbar(true);
+    const chNum=S.chapters.length+1;
+    await saveChapterFile(ps.currentContent, chNum);
+    await _runBot4(ps.currentContent, ps.config, ps.context, ps.attempt);
+  }else if(decision==='full_rewrite'){
+    S._lastSuggestions='';
+    await runPipeline(1, '', ps.config, ps.context);
+  }else{
+    S._lastSuggestions=readEditedReview().suggestions;
+    await runPipeline(ps.attempt+1, ps.currentContent, ps.config, ps.context);
   }
 }
 
