@@ -249,6 +249,7 @@ async function _runBot4(content, config, context, attempt){
   updateChapterList();$('chapterInfo').textContent=`第${chapterNum}章已完成`;$('retryInfo').textContent='';
   S.pipelineState=null;
   setStatus('ready','创作完成');addLog('system',`第${chapterNum}章创作完成！`);resetPipeline();_autoSaveAfterChapter();
+  promptBot1NextChapter(chapterNum);
 }
 
 // 从保存的状态重试当前步骤

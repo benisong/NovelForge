@@ -251,6 +251,19 @@ const backToProjectList = () => {
 };
 
 const startNextChapter = async () => {
+  // 准备一条引导消息预填到 Planning 输入框 —— 让 Bot1 主动用 Bot4 写入上下文的小总结，
+  // 回顾本章 + 给出下一章方案。Planning.vue 会监听 projectStore.pendingPlanningPrompt 消费。
+  const completedChapter = projectStore.chapters.length > 0
+    ? projectStore.chapters.length
+    : (projectStore.summaries.at?.(-1)?.chapter || 0);
+  if (completedChapter > 0) {
+    const next = completedChapter + 1;
+    projectStore.pendingPlanningPrompt = `第${completedChapter}章已完成（小总结见上下文【各章摘要】）。请你：\n`
+      + `1. 用一段话回顾本章关键剧情和未回收的伏笔\n`
+      + `2. 给出第${next}章的 2-3 个走向方案，让我挑选/调整\n`
+      + `3. 顺带说一下是否需要微调总大纲`;
+  }
+
   projectStore.currentContent = '';
   projectStore.chapterOutline = '';
   await projectStore.saveProject();

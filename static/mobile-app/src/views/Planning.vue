@@ -61,7 +61,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { showToast } from 'vant';
 
 import { useProjectStore } from '@/stores/project';
@@ -80,6 +80,22 @@ const projectStore = useProjectStore();
 const inputMsg = ref('');
 const isGenerating = ref(false);
 const chatAreaRef = ref(null);
+
+// Memory.vue 进入下一章规划时会写入 pendingPlanningPrompt。
+// 这里监听一次：输入框为空就填入引导消息；不论是否填入都消费掉信号，避免反复触发。
+watch(
+  () => projectStore.pendingPlanningPrompt,
+  (next) => {
+    if (!next) {
+      return;
+    }
+    if (!inputMsg.value.trim()) {
+      inputMsg.value = next;
+    }
+    projectStore.pendingPlanningPrompt = '';
+  },
+  { immediate: true },
+);
 
 const welcomeMessage = {
   role: 'assistant',

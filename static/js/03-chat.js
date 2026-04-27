@@ -52,6 +52,42 @@ function buildBot2Context(){
   return parts.join('\n\n');
 }
 
+// 引导用户回到 Bot1 规划下一章。Bot4 跑完后调用。
+// 横幅给两个动作：跳到 Bot1 并预填一条引导消息；或稍后。
+// 预填消息让 Bot1 主动回顾本章 + 给出下一章方案，最后向用户发问 —— 这样 buildBot1Context
+// 拼进 system prompt 的小总结才会被 Bot1 真正"用上"，而不是只是塞在那里。
+function promptBot1NextChapter(completedChapter){
+  const next=completedChapter+1;
+  let banner=$('bot4DonePrompt');
+  if(banner) banner.remove();
+  banner=document.createElement('div');
+  banner.id='bot4DonePrompt';
+  banner.style.cssText='position:fixed;top:50px;left:50%;transform:translateX(-50%);z-index:9999;background:var(--bg-surface);border:1px solid var(--accent-green);border-radius:10px;padding:14px 20px;display:flex;align-items:center;gap:14px;box-shadow:0 8px 32px rgba(0,0,0,0.4);max-width:560px;';
+  banner.innerHTML=`
+    <div style="flex:1;">
+      <div style="font-size:14px;font-weight:600;color:var(--accent-green);margin-bottom:4px;">&#10004; 第${completedChapter}章总结完成</div>
+      <div style="font-size:12px;color:var(--text-secondary);">回到 Bot1，让它基于刚才的小总结规划第${next}章？</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-shrink:0;">
+      <button id="btnGoPlanNext" style="padding:6px 14px;background:var(--accent-blue);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">规划第${next}章</button>
+      <button id="btnDismissBot4Prompt" style="padding:6px 14px;background:var(--bg-tertiary);color:var(--text-secondary);border:1px solid var(--border);border-radius:6px;font-size:12px;cursor:pointer;">稍后</button>
+    </div>`;
+  document.body.appendChild(banner);
+  $('btnGoPlanNext').onclick=()=>{
+    banner.remove();
+    switchTab('bot1');
+    const input=$('chatInput');
+    if(input&&!input.value.trim()){
+      input.value=`第${completedChapter}章已完成（小总结见上下文【各章摘要】）。请你：\n`
+        +`1. 用一段话回顾本章关键剧情和未回收的伏笔\n`
+        +`2. 给出第${next}章的 2-3 个走向方案，让我挑选/调整\n`
+        +`3. 顺带说一下是否需要微调总大纲`;
+    }
+    if(input) input.focus();
+  };
+  $('btnDismissBot4Prompt').onclick=()=>banner.remove();
+}
+
 // ---- 改进4: 获取累积的审核tips文本 ----
 function getTipsText(){
   if(!S.accumulatedTips||S.accumulatedTips.length===0) return '';
