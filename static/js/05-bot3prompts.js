@@ -35,17 +35,33 @@ async function manualReReview(){
   }
 
   addReviewToHistory(review,'手动');
-  // 不通过时可编辑+显示操作按钮（如果pipeline暂停中）
-  const isWaiting=!!_userDecisionResolve;
-  if(review.passed){
-    collectTipsFromReview(review);
-    renderReviewPanel(review,'手动',true,isWaiting);
-    addLog('bot3',`重新审计通过！平均分：${review.average}`);
+  collectTipsFromReview(review);
+  addLog('bot3', review.passed
+    ? `重新审计通过！平均分：${review.average}`
+    : `重新审计未通过(${review.average}分)`);
+  $('btnReReview').disabled=false;
+
+  // 关键：审计完成 = 用户可以决策。不论是否在 pipeline 里，按钮都该出现。
+  // 旧逻辑只在 pipeline 暂停时显示按钮，导致"今天写完明天再审"时按钮全无。
+  if(_userDecisionResolve){
+    // 已经有 pipeline 在等决策 — 复用它的 Promise，按钮会喂给它
+    renderReviewPanel(review,'手动',true,true);
+    setStatus('ready','重新审计完成 - 请选择下一步操作');
   }else{
-    renderReviewPanel(review,'手动',true,isWaiting);
-    addLog('bot3',`重新审计未通过(${review.average}分)`);
+    // 没有 pipeline 在等 — 启动一个独立的 bot3_decision 决策流，
+    // 按钮就是它的入口，accept/rewrite/full_rewrite 各自走对应分支
+    setStatus('ready','重新审计完成 - 请选择下一步操作');
+    const ps={
+      stage:'bot3_decision',
+      attempt:'手动',
+      currentContent:content,
+      config,
+      context:S.currentSummary||'',
+    };
+    S.pipelineState=ps;
+    resumePipelineAtBot3Decision(ps).catch(e=>addLog('error',`决策流程异常: ${e.message}`));
   }
-  setStatus('ready','重新审计完成');$('btnReReview').disabled=false;_autoSave();
+  _autoSave();
 }
 
 // ---- Bot3 提示词弹窗管理 ----

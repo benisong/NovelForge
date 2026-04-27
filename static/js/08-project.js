@@ -243,23 +243,28 @@ async function resumePipelineAtBot3Decision(ps){
     const last=S.reviews[S.reviews.length-1];
     renderReviewPanel(last.review,last.attempt,true,true);
   }
-  setStatus('ready',`审核结果已恢复（第${ps.attempt}次）- 请选择下一步操作`);
+  const attemptLabel=(typeof ps.attempt==='number')?`第${ps.attempt}次`:String(ps.attempt||'手动');
+  setStatus('ready',`审核完成（${attemptLabel}）- 请选择下一步操作`);
   S.pipelineState=ps;
 
   const decision=await waitForUserDecision();
   _userDecisionResolve=null;
 
+  // ps.attempt 来自 pipeline 是数字；来自 manualReReview 可能是 '手动'。
+  // rewrite 分支要走 /bot2/rewrite（attempt>1），用 2 作为安全起点。
+  const numericAttempt=(typeof ps.attempt==='number'&&ps.attempt>0)?ps.attempt:1;
+
   if(decision==='accept'){
     showBot2Toolbar(true);
     const chNum=S.chapters.length+1;
     await saveChapterFile(ps.currentContent, chNum);
-    await _runBot4(ps.currentContent, ps.config, ps.context, ps.attempt);
+    await _runBot4(ps.currentContent, ps.config, ps.context, numericAttempt);
   }else if(decision==='full_rewrite'){
     S._lastSuggestions='';
     await runPipeline(1, '', ps.config, ps.context);
   }else{
     S._lastSuggestions=readEditedReview().suggestions;
-    await runPipeline(ps.attempt+1, ps.currentContent, ps.config, ps.context);
+    await runPipeline(numericAttempt+1, ps.currentContent, ps.config, ps.context);
   }
 }
 
