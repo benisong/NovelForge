@@ -128,9 +128,24 @@ const startGenerating = async (suggestions = []) => {
     return;
   }
 
-  const suggestionsText = Array.isArray(suggestions)
-    ? formatSuggestionsText(suggestions)
-    : String(suggestions || '').trim();
+  // suggestions can be:
+  //   string                              → use as-is (legacy callers)
+  //   []                                  → "全部重写" / fresh generation, no suggestions
+  //   review-like object with items/brief → format via formatSuggestionsText
+  //   non-empty array of items            → format via formatSuggestionsText
+  // Without explicit branching, an object would coerce to "[object Object]" via String()
+  // and Bot2 would receive nonsense as the rewrite directive.
+  const passScoreForFormat = Number(projectStore.config?.pass_score ?? 8);
+  let suggestionsText = '';
+  if (typeof suggestions === 'string') {
+    suggestionsText = suggestions.trim();
+  } else if (Array.isArray(suggestions)) {
+    suggestionsText = suggestions.length === 0
+      ? ''
+      : formatSuggestionsText(suggestions, passScoreForFormat);
+  } else if (suggestions && typeof suggestions === 'object') {
+    suggestionsText = formatSuggestionsText(suggestions, passScoreForFormat);
+  }
   const isRewrite = Boolean(suggestionsText);
   const previousContent = String(projectStore.currentContent || '');
 
