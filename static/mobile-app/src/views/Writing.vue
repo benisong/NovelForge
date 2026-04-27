@@ -86,7 +86,7 @@ const requestStyleId = computed(() =>
   String(projectStore.selectedStyleId || projectStore.defaultStyleId || '').trim(),
 );
 const requestWordCount = computed(() => {
-  // 字数不设上限，用户按 Bot2 的 max_tokens 自行权衡
+  // 字数是创作目标，不是硬上限；硬上限由 Bot2 max_tokens (AI 回复 token 上限) 决定
   const nextValue = Math.round(
     Number(projectStore.wordCount || projectStore.defaultWordCount) || 800,
   );
