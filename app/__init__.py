@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .routes import bot1, bot2, bot3, bot4, configs, projects
 from . import workspace as ws
+from .migrations import run_pending_migrations
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO").upper(),
@@ -31,6 +32,9 @@ app = FastAPI(title="NovelForge v3.0 (multi-workspace)")
 
 # 首次启动若 _admin.json 不存在，用默认 admin/admin 初始化
 ws.ensure_admin_initialized()
+
+# 旧版本工作空间存盘的 max_tokens 等历史字段，启动时一次性拉齐
+run_pending_migrations()
 
 # --- CORS ---
 _cors_origins = [
