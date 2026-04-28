@@ -97,7 +97,7 @@ function saveProjectSync(){
     big_summaries:S.bigSummaries||[],
     chapter_boundary_idx:S.chapterBoundaryIdx||0,
   };
-  navigator.sendBeacon('/api/projects/save', new Blob([JSON.stringify(body)],{type:'application/json'}));
+  navigator.sendBeacon(apiUrl('/api/projects/save'), new Blob([JSON.stringify(body)],{type:'application/json'}));
   localStorage.setItem('nf_last_project',currentProjectId);
 }
 
@@ -360,7 +360,7 @@ async function exportProject(){
   }catch(e){addLog('error',`导出失败: ${e.message}`);}
 }
 
-const _autoSaveAfterChapter=()=>{saveProject(false);};
+const _autoSaveAfterChapter=()=>saveProject(false);
 
 // AI回复完毕或用户操作后自动保存
 const _autoSave=()=>{saveProject(true);};

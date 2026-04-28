@@ -248,7 +248,7 @@ async function _runBot4(content, config, context, attempt){
   S.chapters.push({outline:S.currentOutline,chapter_outline:S.chapterOutline,content:S.currentContent,summary:condensed});
   updateChapterList();$('chapterInfo').textContent=`第${chapterNum}章已完成`;$('retryInfo').textContent='';
   S.pipelineState=null;
-  setStatus('ready','创作完成');addLog('system',`第${chapterNum}章创作完成！`);resetPipeline();_autoSaveAfterChapter();
+  setStatus('ready','创作完成');addLog('system',`第${chapterNum}章创作完成！`);resetPipeline();
 
   // 章节归档：清掉本章的章节大纲和正文显示，给下一章腾出干净工作区。
   // 总大纲（currentOutline）保留 —— 它是全书规划，不是单章数据。
@@ -264,6 +264,7 @@ async function _runBot4(content, config, context, attempt){
   const _wcEl=$('wordCount');
   if(_wcEl){_wcEl.textContent='字数：0';}
 
+  await _autoSaveAfterChapter();
   promptBot1NextChapter(chapterNum);
 }
 
@@ -320,6 +321,9 @@ async function retryBot3AndContinue(ps){
     _userDecisionResolve=null;
 
     if(decision==='accept'){
+      showBot2Toolbar(true);
+      const chNum=S.chapters.length+1;
+      await saveChapterFile(ps.currentContent, chNum);
       await _runBot4(ps.currentContent, ps.config, ps.context, ps.attempt);
     }else if(decision==='full_rewrite'){
       await runPipeline(1, '', ps.config, ps.context);
