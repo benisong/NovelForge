@@ -298,10 +298,19 @@ export function formatSuggestionsText(reviewLike, passScore = 8) {
     return reviewLike.trim();
   }
 
+  const userSuggestions = String(reviewLike?.user_suggestions || '').trim();
   const items = normalizeReviewItems(reviewLike?.items ?? reviewLike);
   const rewriteBrief = buildRewriteBrief(reviewLike, passScore);
+  const parts = [];
+  if (userSuggestions) {
+    parts.push(`【用户补充建议（最高优先级）】\n${userSuggestions}`);
+  }
+
   if (items.length === 0) {
-    return rewriteBrief ? `【Bot3重写指令】\n${rewriteBrief}` : '';
+    if (rewriteBrief) {
+      parts.push(`【Bot3重写指令】\n${rewriteBrief}`);
+    }
+    return parts.join('\n\n').trim();
   }
 
   const detailText = items
@@ -312,10 +321,12 @@ export function formatSuggestionsText(reviewLike, passScore = 8) {
     .join('\n\n');
 
   if (!rewriteBrief) {
-    return detailText;
+    parts.push(detailText);
+    return parts.join('\n\n').trim();
   }
 
-  return `【Bot3重写指令】\n${rewriteBrief}\n\n【逐条修改建议】\n${detailText}`.trim();
+  parts.push(`【Bot3重写指令】\n${rewriteBrief}\n\n【逐条修改建议】\n${detailText}`);
+  return parts.join('\n\n').trim();
 }
 
 export function nowString() {

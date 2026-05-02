@@ -47,6 +47,18 @@
         <div class="rewrite-brief">{{ effectiveRewriteBrief }}</div>
       </div>
 
+      <div class="suggestions-card">
+        <h3 class="section-title">用户补充建议</h3>
+        <van-field
+          v-model="userSuggestions"
+          rows="3"
+          autosize
+          type="textarea"
+          class="user-suggestion-field"
+          placeholder="写给 Bot2 的额外要求，会以最高优先级放在 AI 建议前面。"
+        />
+      </div>
+
       <div class="suggestions-card" v-if="suggestions.length > 0">
         <h3 class="section-title">修改建议</h3>
         <van-collapse v-model="activeNames" accordion>
@@ -102,7 +114,7 @@
           icon="edit"
           type="primary"
           class="action-btn"
-          :disabled="suggestions.length === 0"
+          :disabled="!hasRewriteInput"
           @click="handleRewrite('suggested')"
         >
           按建议重写
@@ -125,7 +137,7 @@
           type="primary"
           plain
           class="action-btn"
-          :disabled="suggestions.length === 0"
+          :disabled="!hasRewriteInput"
           @click="handleRewrite('suggested')"
         >
           按建议优化
@@ -198,6 +210,7 @@ const scoreList = ref([
 const suggestions = ref([]);
 const reviewAnalysis = ref('');
 const rewriteBrief = ref('');
+const userSuggestions = ref('');
 const activeNames = ref('');
 const showEditDialog = ref(false);
 const editingForm = ref({ dim: '', index: -1, problem: '', suggestion: '' });
@@ -217,6 +230,11 @@ const averageScore = computed(() => {
 });
 
 const isPassed = computed(() => Number(averageScore.value) >= passScore.value);
+const hasRewriteInput = computed(() =>
+  suggestions.value.length > 0
+  || Boolean(effectiveRewriteBrief.value)
+  || Boolean(userSuggestions.value.trim()),
+);
 
 const parseFailed = computed(() =>
   retryHint.value
@@ -240,6 +258,7 @@ const reviewDraft = computed(() => ({
   scores: Object.fromEntries(scoreList.value.map((item) => [item.key, Number(item.value || 0)])),
   analysis: reviewAnalysis.value,
   rewrite_brief: rewriteBrief.value,
+  user_suggestions: userSuggestions.value,
   items: suggestions.value,
 }));
 
@@ -277,6 +296,9 @@ const applyReview = (review) => {
   }));
   reviewAnalysis.value = String(review.analysis || '').trim();
   rewriteBrief.value = String(review.rewrite_brief || review.rewrite_plan || '').trim();
+  if (Object.prototype.hasOwnProperty.call(review, 'user_suggestions')) {
+    userSuggestions.value = String(review.user_suggestions || '').trim();
+  }
   activeNames.value = suggestions.value[0]?.dim || '';
   rawPreview.value = String(review._raw_preview || '').trim();
   retryHint.value = Boolean(review.retry_hint);
@@ -293,6 +315,7 @@ const persistReview = () => {
       passed: isPassed.value,
       analysis: reviewAnalysis.value,
       rewrite_brief: effectiveRewriteBrief.value,
+      user_suggestions: userSuggestions.value.trim(),
       items: suggestions.value,
       _raw_preview: rawPreview.value,
       retry_hint: retryHint.value,
@@ -430,6 +453,7 @@ const handleRewrite = (type) => {
           ? {
               ...reviewDraft.value,
               rewrite_brief: effectiveRewriteBrief.value,
+              user_suggestions: userSuggestions.value.trim(),
             }
           : [],
       });
@@ -577,6 +601,20 @@ defineExpose({
   padding: 12px;
   background: #f6fbff;
   border: 1px solid #cfe8ff;
+  border-radius: 8px;
+}
+
+.user-suggestion-field {
+  padding: 0;
+  background: transparent;
+}
+
+.user-suggestion-field :deep(.van-field__control) {
+  padding: 12px;
+  min-height: 88px;
+  line-height: 1.6;
+  background: #fffaf0;
+  border: 1px solid #ffe3ac;
   border-radius: 8px;
 }
 

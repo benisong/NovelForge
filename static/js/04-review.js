@@ -41,8 +41,20 @@ function buildReviewRewriteBrief(review, passScore) {
   return lines.join('\n').trim();
 }
 
+function _readUserReviewSuggestions() {
+  const input = $('editUserSuggestions');
+  return input ? input.value.trim() : '';
+}
+
+function _syncUserReviewSuggestions(review) {
+  const input = $('editUserSuggestions');
+  if (!input || !review || !Object.prototype.hasOwnProperty.call(review, 'user_suggestions')) return;
+  input.value = String(review.user_suggestions || '').trim();
+}
+
 // editable: 是否可编辑  showActions: 是否显示用户决策按钮
 function renderReviewPanel(review, attempt, editable, showActions){
+  _syncUserReviewSuggestions(review);
   const sc = review.scores || {};
   const avg = review.average || 0;
   const p = review.passed;
@@ -109,7 +121,7 @@ function renderReviewPanel(review, attempt, editable, showActions){
       <button class="btn-rewrite" style="background:var(--accent-red);color:#fff;" onclick="userDecisionFullRewrite()">&#128259; 全部重写</button>
     </div>`;
     if (editable) {
-      actionsHtml += '<div class="edit-mode-hint">你可以直接编辑重写指令、评分和逐条建议，Bot2 会优先按这份修改稿执行。</div>';
+      actionsHtml += '<div class="edit-mode-hint">用户补充建议在上方独立输入；你也可以编辑重写指令、评分和逐条建议。</div>';
     }
   }
 
@@ -314,6 +326,7 @@ function readEditedReview() {
   const rewriteBrief = $('editRewriteBrief')
     ? $('editRewriteBrief').value
     : buildReviewRewriteBrief({ scores, items, analysis }, passScore);
+  const userSuggestions = _readUserReviewSuggestions();
 
   const suggestionsText = items.map((item, index) => {
     const dimLabel = DIM_LABEL_MAP[item.dim] || item.dim;
@@ -321,11 +334,15 @@ function readEditedReview() {
     return `${index + 1}. [${sevLabel}][${dimLabel}] 位置：${item.location || '全文'}\n   问题：${item.problem}\n   建议：${item.suggestion}`;
   }).join('\n\n');
 
-  const combinedSuggestions = rewriteBrief
+  const aiSuggestions = rewriteBrief
     ? suggestionsText
       ? `【Bot3重写指令】\n${rewriteBrief}\n\n【逐条修改建议】\n${suggestionsText}`
       : `【Bot3重写指令】\n${rewriteBrief}`
     : suggestionsText;
+  const combinedSuggestions = [
+    userSuggestions ? `【用户补充建议（最高优先级）】\n${userSuggestions}` : '',
+    aiSuggestions,
+  ].filter(Boolean).join('\n\n');
 
   return {
     scores,
@@ -333,6 +350,7 @@ function readEditedReview() {
     passed: average >= passScore,
     analysis,
     rewrite_brief: rewriteBrief,
+    user_suggestions: userSuggestions,
     items,
     suggestions: combinedSuggestions.trim(),
   };

@@ -341,6 +341,7 @@ function resetProjectState(){
   $('outlinePreview').textContent='总大纲将在对话过程中自动生成和更新';$('outlinePreview').className='outline-body empty';
   $('chapterOutlinePreview').textContent='章节大纲将在讨论中生成';$('chapterOutlinePreview').className='outline-body empty';
   $('btnConfirmOutline').disabled=true;
+  if($('editUserSuggestions')) $('editUserSuggestions').value='';
   $('contentOutput').textContent='等待Bot2创作内容...';$('contentOutput').className='output-area empty';
   showBot2Toolbar(false);
   if($('summaryOutput')){$('summaryOutput').textContent='等待Bot4生成记忆总结...';$('summaryOutput').className='output-area empty';}

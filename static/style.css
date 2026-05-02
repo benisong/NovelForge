@@ -224,6 +224,16 @@ body { font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif; backgr
   font-family:inherit; white-space:pre-wrap; word-break:break-word;
 }
 .review-edit-textarea:focus { border-color:var(--accent-blue); outline:none; }
+.review-user-suggestion-card {
+  margin-bottom:12px; padding:12px; border:1px solid rgba(249,226,175,.36);
+  border-radius:8px; background:rgba(249,226,175,.08);
+}
+.rus-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+.rus-title { font-size:13px; font-weight:700; color:var(--text-primary); }
+.rus-priority { font-size:11px; color:var(--accent-yellow); }
+.review-user-suggestion-input {
+  min-height:78px; border-color:rgba(249,226,175,.45); background:var(--bg-primary);
+}
 .review-action-bar {
   display:flex; gap:8px; margin-top:12px; padding:12px; background:var(--bg-tertiary);
   border-radius:8px; justify-content:center; flex-wrap:wrap;

@@ -116,6 +116,8 @@ async def bot2_rewrite(workspace: str, req: Bot2RewriteRequest):
         f"{outline_text}\n\n"
         f"【当前小说正文】\n{req.content}\n\n"
         f"【审核反馈和修改建议】\n{req.suggestions}\n\n"
+        f"如果反馈中包含【用户补充建议（最高优先级）】，必须优先满足用户补充建议；"
+        f"Bot3 建议与用户补充建议冲突时，以用户补充建议为准。"
         f"请参考大纲方向，严格按照上述审核建议对当前正文进行针对性修改。"
         f"保留原文的优点和整体结构，只改进建议中指出的具体问题。"
         f"直接输出修改后的完整小说正文，目标字数约{req.word_count}字。"
