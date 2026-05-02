@@ -64,6 +64,8 @@ class Bot3ReviewRequest(BaseModel):
     config: ProjectConfig
     style_id: Optional[str] = ""
     custom_prompt: Optional[str] = ""
+    previous_suggestions: Optional[str] = ""
+    review_attempt: Optional[int] = 1
 
 
 class Bot4SummarizeRequest(BaseModel):
@@ -128,6 +130,7 @@ class SaveProjectRequest(BaseModel):
     pipeline_state: Optional[dict] = None
     active_tab: str = ""
     accumulated_tips: list[str] = []
+    last_rewrite_suggestions: str = ""
     small_summaries: list[dict] = []   # [{chapter, condensed, abstract, time}]
     big_summaries: list[dict] = []     # [{fromChapter, toChapter, content, time}]
     # 章节边界标记：chat_history 中的下标，<= 此值的消息属于已完成章节，

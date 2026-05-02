@@ -65,6 +65,19 @@ function waitForUserDecision(){
   return new Promise(resolve=>{_userDecisionResolve=resolve;});
 }
 
+function buildBot3ReviewRequest(content, config, attempt){
+  const numericAttempt=Number.isFinite(Number(attempt))&&Number(attempt)>0?Number(attempt):1;
+  return {
+    content,
+    outline:S.currentOutline,
+    config,
+    style_id:getStyleId(),
+    custom_prompt:getBot3CustomPrompt(),
+    previous_suggestions:numericAttempt>1?String(S._lastSuggestions||'').trim():'',
+    review_attempt:numericAttempt,
+  };
+}
+
 async function confirmOutline(){
   if(!S.currentOutline&&!S.chapterOutline){alert('还没有大纲内容');return;}
   if(!validateAll())return;
@@ -72,6 +85,7 @@ async function confirmOutline(){
   // 先持久化总大纲和章节大纲
   await saveProject(true);
   addLog('system','大纲已持久化，开始创作');
+  S._lastSuggestions='';
   // 构建Bot2上下文（大总结 + condensed）
   const bot2Context=buildBot2Context();
   await runPipeline(1, '', getConfig(), bot2Context);
@@ -120,7 +134,7 @@ async function runPipeline(startAttempt, prevContent, config, context){
 
     let review;
     try{
-      const r=await fetch(apiUrl('/api/bot3/review'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:currentContent,outline:S.currentOutline,config,style_id:getStyleId(),custom_prompt:getBot3CustomPrompt()}),signal:S.abortCtrl.signal});
+      const r=await fetch(apiUrl('/api/bot3/review'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(buildBot3ReviewRequest(currentContent,config,attempt)),signal:S.abortCtrl.signal});
       review=await r.json();
       if(review.error&&!review.scores)throw new Error(review.error);
     }catch(e){
@@ -257,6 +271,7 @@ async function _runBot4(content, config, context, attempt){
   S.chapterBoundaryIdx=S.chatHistory.length;
   S.chapterOutline='';
   S.currentContent='';
+  S._lastSuggestions='';
   const _chOutEl=$('chapterOutlinePreview');
   if(_chOutEl){_chOutEl.textContent='章节大纲将在讨论中生成';_chOutEl.className='outline-body empty';}
   const _contentEl=$('contentOutput');
@@ -294,7 +309,7 @@ async function retryBot3AndContinue(ps){
 
   let review;
   try{
-    const r=await fetch(apiUrl('/api/bot3/review'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:ps.currentContent,outline:S.currentOutline,config:ps.config,style_id:getStyleId(),custom_prompt:getBot3CustomPrompt()}),signal:S.abortCtrl.signal});
+    const r=await fetch(apiUrl('/api/bot3/review'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(buildBot3ReviewRequest(ps.currentContent,ps.config,ps.attempt)),signal:S.abortCtrl.signal});
     review=await r.json();if(review.error&&!review.scores)throw new Error(review.error);
   }catch(e){
     if(e.name==='AbortError'){addLog('system','已停止');resetPipeline();return;}

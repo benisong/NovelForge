@@ -192,6 +192,7 @@ const startGenerating = async (suggestions = []) => {
     );
 
     projectStore.currentContent = fullText;
+    projectStore.lastRewriteSuggestions = isRewrite ? suggestionsText : '';
     await projectStore.saveProject();
   } catch (error) {
     if (!projectStore.currentContent && previousContent) {

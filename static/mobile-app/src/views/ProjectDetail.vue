@@ -177,6 +177,7 @@ const handleRewrite = async (data) => {
 
 const handleApprove = async () => {
   await ensureCurrentChapterSaved();
+  projectStore.lastRewriteSuggestions = '';
   await goToCard(3);
 };
 
@@ -185,6 +186,7 @@ const startNextChapter = async () => {
   showDrawer.value = false;
   projectStore.currentContent = '';
   projectStore.chapterOutline = '';
+  projectStore.lastRewriteSuggestions = '';
   await projectStore.saveProject();
   await goToCard(0);
 };

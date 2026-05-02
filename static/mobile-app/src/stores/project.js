@@ -164,6 +164,7 @@ export const useProjectStore = defineStore('project', () => {
   const summaries = ref([]);
   const bigSummaries = ref([]);
   const chapters = ref([]);
+  const lastRewriteSuggestions = ref('');
 
   // 仅当前会话有效（不持久化）：跨视图传递一次性预填消息。
   // Memory.vue 点"进入下一章规划"时写入；Planning.vue 监听到非空就填入输入框并清空。
@@ -320,6 +321,7 @@ export const useProjectStore = defineStore('project', () => {
       chapters.value = data.chapters || [];
       summaries.value = data.small_summaries || [];
       bigSummaries.value = data.big_summaries || [];
+      lastRewriteSuggestions.value = data.last_rewrite_suggestions || '';
       localStorage.setItem('nf_last_project', projectId.value);
       return true;
     } catch (error) {
@@ -357,6 +359,7 @@ export const useProjectStore = defineStore('project', () => {
       reviews: reviews.value,
       small_summaries: summaries.value,
       big_summaries: bigSummaries.value,
+      last_rewrite_suggestions: lastRewriteSuggestions.value,
       logs: [],
       active_tab: 'bot1',
     };
@@ -396,6 +399,7 @@ export const useProjectStore = defineStore('project', () => {
     summaries,
     bigSummaries,
     chapters,
+    lastRewriteSuggestions,
     pendingPlanningPrompt,
     setConfig,
     createConfigDraft,

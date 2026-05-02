@@ -12,6 +12,7 @@ const S = {
   accumulatedTips: [],   // 改进4: 历史审核经验（错题本），最多保留10条
   smallSummaries: [],    // [{chapter, condensed, abstract, time}]
   bigSummaries: [],      // [{fromChapter, toChapter, content, time}]
+  _lastSuggestions: '',  // 上一轮发给 Bot2 的重写建议，供 Bot3 复审时逐项核对
   abortCtrl: null,
   isGenerating: false,
   pipelineState: null,

@@ -47,6 +47,7 @@ async function saveProject(silent){
       attempt:S.pipelineState.attempt,
       currentContent:S.pipelineState.currentContent||'',
       context:S.pipelineState.context||'',
+      lastSuggestions:S._lastSuggestions||'',
       // config里的数据会很大且含敏感信息，不重复保存——恢复时从当前配置取
     };
   }
@@ -63,6 +64,7 @@ async function saveProject(silent){
     pipeline_state:savablePipelineState,
     active_tab:_getActiveTab(),
     accumulated_tips:S.accumulatedTips||[],
+    last_rewrite_suggestions:S._lastSuggestions||'',
     small_summaries:S.smallSummaries||[],
     big_summaries:S.bigSummaries||[],
     chapter_boundary_idx:S.chapterBoundaryIdx||0,
@@ -78,7 +80,7 @@ function saveProjectSync(){
   if(!currentProjectId) currentProjectId=genProjectId();
   let savablePipelineState=null;
   if(S.pipelineState){
-    savablePipelineState={stage:S.pipelineState.stage,attempt:S.pipelineState.attempt,currentContent:S.pipelineState.currentContent||'',context:S.pipelineState.context||''};
+    savablePipelineState={stage:S.pipelineState.stage,attempt:S.pipelineState.attempt,currentContent:S.pipelineState.currentContent||'',context:S.pipelineState.context||'',lastSuggestions:S._lastSuggestions||''};
   }
   const body={
     project_id:currentProjectId, name,
@@ -93,6 +95,7 @@ function saveProjectSync(){
     pipeline_state:savablePipelineState,
     active_tab:_getActiveTab(),
     accumulated_tips:S.accumulatedTips||[],
+    last_rewrite_suggestions:S._lastSuggestions||'',
     small_summaries:S.smallSummaries||[],
     big_summaries:S.bigSummaries||[],
     chapter_boundary_idx:S.chapterBoundaryIdx||0,
@@ -143,6 +146,7 @@ async function loadProject(pid){
     S.reviews=d.reviews||[];
     S.logs=d.logs||[];
     S.accumulatedTips=d.accumulated_tips||[];
+    S._lastSuggestions=d.last_rewrite_suggestions||'';
     S.smallSummaries=d.small_summaries||[];
     S.bigSummaries=d.big_summaries||[];
     S.chapterBoundaryIdx=Number(d.chapter_boundary_idx)||0;
@@ -222,7 +226,8 @@ async function resumePipelineFromSaved(ps){
   if(!validateAll()){addLog('error','请先完成Bot配置后再恢复');return;}
   const config=getConfig();
   // 用当前配置替换（因为保存时没有存config）
-  const fullState={stage:ps.stage, attempt:ps.attempt, currentContent:ps.currentContent||S.currentContent||'', config, context:ps.context||S.currentSummary||''};
+  const fullState={stage:ps.stage, attempt:ps.attempt, currentContent:ps.currentContent||S.currentContent||'', config, context:ps.context||S.currentSummary||'', lastSuggestions:ps.lastSuggestions||''};
+  S._lastSuggestions=fullState.lastSuggestions||S._lastSuggestions||'';
   S.pipelineState=fullState;
   addLog('system',`从「${ps.stage}」阶段恢复创作...`);
 
@@ -335,6 +340,7 @@ function resetProjectState(){
   S.chatHistory=[];S.chapters=[];S.reviews=[];S.logs=[];S.accumulatedTips=[];
   S.smallSummaries=[];S.bigSummaries=[];
   S.currentOutline='';S.chapterOutline='';S.currentContent='';S.currentSummary='';
+  S._lastSuggestions='';
   S.pipelineState=null;
   S.chapterBoundaryIdx=0;
   rebuildChatUI();updateChapterList();

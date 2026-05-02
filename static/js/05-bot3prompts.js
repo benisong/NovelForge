@@ -24,9 +24,7 @@ async function manualReReview(){
 
   let review;
   try{
-    const r=await fetch(apiUrl('/api/bot3/review'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      content,outline:S.currentOutline,config,style_id:getStyleId(),custom_prompt:getBot3CustomPrompt()
-    })});
+    const r=await fetch(apiUrl('/api/bot3/review'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(buildBot3ReviewRequest(content,config,S._lastSuggestions?2:1))});
     review=await r.json();
     if(review.error&&!review.scores)throw new Error(review.error);
   }catch(e){

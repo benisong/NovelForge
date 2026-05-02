@@ -369,6 +369,8 @@ const runReview = async ({ force = false } = {}) => {
         config,
         style_id: currentStyleId.value,
         custom_prompt: '',
+        previous_suggestions: String(projectStore.lastRewriteSuggestions || '').trim(),
+        review_attempt: projectStore.lastRewriteSuggestions ? 2 : 1,
       }),
     });
 
