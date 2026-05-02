@@ -29,6 +29,8 @@ class FetchModelsRequest(BaseModel):
 class Bot1ChatRequest(BaseModel):
     messages: list[dict]
     config: ProjectConfig
+    current_outline: Optional[str] = ""
+    chapter_outline: Optional[str] = ""
     context: Optional[str] = ""
 
 

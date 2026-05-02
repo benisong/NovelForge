@@ -100,7 +100,7 @@ export function getRuntimeConfig(rawConfig) {
 }
 
 export async function readSSE(url, body, options = {}) {
-  const { signal, onChunk } = options;
+  const { signal, onChunk, onReset } = options;
   const response = await fetch(apiUrl(url), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -147,6 +147,15 @@ export async function readSSE(url, body, options = {}) {
         const parsed = JSON.parse(payload);
         if (parsed.error) {
           throw new Error(parsed.error);
+        }
+        if (parsed.reset) {
+          fullText = '';
+          if (onReset) {
+            onReset(parsed);
+          } else {
+            onChunk?.('', fullText);
+          }
+          continue;
         }
         if (parsed.content) {
           fullText += parsed.content;

@@ -117,7 +117,7 @@ const scrollToBottom = async () => {
 
 const formatMessage = (text, role) => {
   const content = role === 'assistant' ? stripOutline(text) : String(text || '');
-  return content.replace(/\n/g, '<br/>');
+  return (content || '已更新大纲').replace(/\n/g, '<br/>');
 };
 
 const syncOutlines = (fullText) => {
@@ -145,8 +145,13 @@ const sendMessage = async () => {
   }
 
   const userMessage = { role: 'user', content: message };
-  const apiMessages = [...projectStore.chatHistory, userMessage];
   const assistantMessage = { role: 'assistant', content: '' };
+  const stableOutline = projectStore.currentOutline;
+  const stableChapterOutline = projectStore.chapterOutline;
+  const restoreStableOutlines = () => {
+    projectStore.currentOutline = stableOutline;
+    projectStore.chapterOutline = stableChapterOutline;
+  };
 
   projectStore.chatHistory.push(userMessage);
   projectStore.chatHistory.push(assistantMessage);
@@ -158,11 +163,18 @@ const sendMessage = async () => {
     const fullText = await readSSE(
       '/api/bot1/chat',
       {
-        messages: apiMessages,
+        messages: [userMessage],
         config,
+        current_outline: projectStore.currentOutline,
+        chapter_outline: projectStore.chapterOutline,
         context: buildBot1Context(projectStore),
       },
       {
+        onReset: () => {
+          restoreStableOutlines();
+          assistantMessage.content = '格式校验未通过，正在自动重试...';
+          scrollToBottom();
+        },
         onChunk: (_chunk, full) => {
           assistantMessage.content = full;
           syncOutlines(full);
@@ -175,6 +187,7 @@ const sendMessage = async () => {
     syncOutlines(fullText);
     await projectStore.saveProject();
   } catch (error) {
+    restoreStableOutlines();
     projectStore.chatHistory.pop();
     showToast(error.message || 'Bot1 请求失败');
   } finally {

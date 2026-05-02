@@ -150,6 +150,10 @@ function appendMsg(role,content,idx){
   return wrap;
 }
 
+function bot1DisplayText(content){
+  return stripOutline(content)||'已更新大纲';
+}
+
 function deleteMsg(idx){
   if(S.isGenerating)return;
   if(idx<0||idx>=S.chatHistory.length)return;
@@ -182,7 +186,7 @@ function rebuildChatUI(){
     return;
   }
   S.chatHistory.forEach((m,i)=>{
-    const displayText=m.role==='assistant'?stripOutline(m.content):m.content;
+    const displayText=m.role==='assistant'?bot1DisplayText(m.content):m.content;
     appendMsg(m.role,displayText,i);
   });
 }
@@ -210,6 +214,26 @@ function recalcOutlineFromHistory(){
   $('btnConfirmOutline').disabled=!(foundGlobal||foundChapter);
 }
 
+function renderBot1OutlineState(){
+  if(S.currentOutline){
+    $('outlinePreview').textContent=S.currentOutline;
+    $('outlinePreview').className='outline-body';
+  }else{
+    $('outlinePreview').textContent='总大纲将在对话过程中自动生成和更新';
+    $('outlinePreview').className='outline-body empty';
+  }
+
+  if(S.chapterOutline){
+    $('chapterOutlinePreview').textContent=S.chapterOutline;
+    $('chapterOutlinePreview').className='outline-body';
+  }else{
+    $('chapterOutlinePreview').textContent='章节大纲将在讨论中生成';
+    $('chapterOutlinePreview').className='outline-body empty';
+  }
+
+  $('btnConfirmOutline').disabled=!(S.currentOutline||S.chapterOutline);
+}
+
 function chatKeydown(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}
 
 async function sendChat(){
@@ -218,13 +242,16 @@ async function sendChat(){
   const text=$('chatInput').value.trim();
   if(!text)return;
   $('chatInput').value='';
+  const userMessage={role:'user',content:text};
   const userIdx=S.chatHistory.length;
-  S.chatHistory.push({role:'user',content:text});
+  S.chatHistory.push(userMessage);
   appendMsg('user',text,userIdx);
 
   S.isGenerating=true;S.abortCtrl=new AbortController();
   $('btnSend').disabled=true;$('outlineLive').style.display='';
   setStatus('busy','Bot1思考中...');addLog('bot1','正在回复...');
+  const stableOutline=S.currentOutline;
+  const stableChapterOutline=S.chapterOutline;
 
   const assistIdx=S.chatHistory.length; // 预留位置
   const bubble=appendMsg('assistant','',assistIdx);
@@ -233,8 +260,22 @@ async function sendChat(){
 
   try{
     const config=getConfig();
-    const fullText=await readSSE('/api/bot1/chat',{messages:S.chatHistory,config,context:buildBot1Context()},
-    (chunk,full)=>{
+    const fullText=await readSSE('/api/bot1/chat',{
+      messages:[userMessage],
+      config,
+      current_outline:S.currentOutline,
+      chapter_outline:S.chapterOutline,
+      context:buildBot1Context(),
+    },
+    (chunk,full,meta)=>{
+      if(meta&&meta.reset){
+        S.currentOutline=stableOutline;
+        S.chapterOutline=stableChapterOutline;
+        renderBot1OutlineState();
+        textEl.textContent='格式校验未通过，正在自动重试...';
+        addLog('bot1','标签格式不完整，正在自动重试');
+        return;
+      }
       textEl.textContent=stripOutline(full)||'...';
       // 总大纲
       const ol=extractOutline(full);
@@ -249,7 +290,7 @@ async function sendChat(){
 
     S.chatHistory.push({role:'assistant',content:fullText});
     bubble.dataset.idx=assistIdx;
-    textEl.textContent=stripOutline(fullText);
+    textEl.textContent=bot1DisplayText(fullText);
     const ol=extractOutline(fullText);
     if(ol){S.currentOutline=ol;$('outlinePreview').textContent=ol;$('outlinePreview').className='outline-body';}
     const col=extractChapterOutline(fullText);
@@ -259,7 +300,12 @@ async function sendChat(){
     _autoSave();
   }catch(e){
     if(e.name==='AbortError'){addLog('system','已停止');}
-    else{addLog('error',`Bot1错误: ${e.message}`);setStatus('error','Bot1出错');}
+    else{
+      S.currentOutline=stableOutline;
+      S.chapterOutline=stableChapterOutline;
+      renderBot1OutlineState();
+      addLog('error',`Bot1错误: ${e.message}`);setStatus('error','Bot1出错');
+    }
     textEl.textContent=textEl.textContent||'(生成失败，请重试)';
   }
   S.isGenerating=false;$('btnSend').disabled=false;$('outlineLive').style.display='none';

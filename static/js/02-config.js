@@ -61,7 +61,7 @@ async function readSSE(url,body,onChunk,signal){
       if(!line.startsWith('data: '))continue;
       const d=line.slice(6).trim();
       if(d==='[DONE]')return full;
-      try{const o=JSON.parse(d);if(o.error)throw new Error(o.error);if(o.content){full+=o.content;if(onChunk)onChunk(o.content,full);}}
+      try{const o=JSON.parse(d);if(o.error)throw new Error(o.error);if(o.reset){full='';if(onChunk)onChunk('',full,o);continue;}if(o.content){full+=o.content;if(onChunk)onChunk(o.content,full,o);}}
       catch(pe){if(pe.message&&!pe.message.includes('Unexpected'))throw pe;}
     }
   }
