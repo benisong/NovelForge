@@ -18,35 +18,76 @@ router = APIRouter(
 
 REQUIRED_OUTLINE_TAGS = ("outline", "chapter_outline")
 BOT1_FORMAT_RETRY_LIMIT = 2
+PLACEHOLDER_OUTLINE_TEXTS = {
+    "同上",
+    "略",
+    "保持不变",
+    "完整总大纲",
+    "完整当前章节大纲",
+    "完整章节大纲",
+    "待补充",
+    "暂无",
+    "无",
+    "...",
+}
+SHORT_PLACEHOLDER_MARKERS = (
+    "同上",
+    "保持不变",
+    "完整总大纲",
+    "完整当前章节大纲",
+    "完整章节大纲",
+    "待补充",
+)
+SHRINK_ALLOWED_KEYWORDS = (
+    "精简",
+    "压缩",
+    "简化",
+    "缩短",
+    "重开",
+    "重新开始",
+    "从头",
+    "推翻",
+    "清空",
+    "删除",
+    "重写大纲",
+    "重新规划",
+)
 
 BOT1_STRICT_FORMAT_RETRY = """## Bot1 输出格式重试指令（最高优先级）
 
 你上一次回复没有通过程序校验。现在重新输出一版完整回复。
 
-必须严格满足：
-1. 只允许出现一组 <outline>...</outline> 和一组 <chapter_outline>...</chapter_outline>
-2. 先输出 <outline>，再输出 <chapter_outline>
-3. 两个标签都必须闭合，标签名必须完全一致
-4. 标签内必须是完整可用的大纲，不得写“同上”“略”“保持不变”
-5. 不要使用 JSON、代码围栏、markdown 表格，不要解释格式错误
-6. 输出前自行复查标签完整性，复查过程不要写出来
+必须严格满足三部分顺序：
+1. 第一部分：和用户聊天，肯定想法、指出误区或给出建议。不要加标签。
+2. 第二部分：<outline>...</outline>，完整全文大纲（总）。
+3. 第三部分：<chapter_outline>...</chapter_outline>，完整章节大纲。
+
+标签要求：
+- 只允许出现一组 <outline>...</outline> 和一组 <chapter_outline>...</chapter_outline>
+- 先输出第一部分聊天，再输出 <outline>，最后输出 <chapter_outline>
+- 两个标签都必须闭合，标签名必须完全一致
+- 标签内必须是完整可用的大纲，不得写“同上”“略”“保持不变”或占位话
+- 如果大纲不需要改，就完整照抄当前已有大纲，不得概括、删减或丢失设定
+- 不要使用 JSON、代码围栏、markdown 表格，不要解释格式错误
+- 输出前自行复查标签完整性，复查过程不要写出来
 
 若上一次回复中已有可用设定，可以吸收；若标签缺失，请根据当前总大纲、当前章节大纲、摘要记忆和用户最新输入补齐。"""
 
-BOT1_TAG_ONLY_RETRY = """## Bot1 标签补救指令（最终兜底，最高优先级）
+BOT1_MINIMAL_THREE_PART_RETRY = """## Bot1 三段式补救指令（最终兜底，最高优先级）
 
-现在不要再输出解释、寒暄、分析正文。
-只返回两个完整标签块：
+现在只返回三部分，不要输出解释格式错误的话。
+
+第一部分：一句话回复用户，肯定想法、指出误区或给出建议。
 
 <outline>
-完整总大纲
+完整全文大纲（总）；若无需修改，完整照抄当前总大纲
 </outline>
 
 <chapter_outline>
-完整当前章节大纲
+完整章节大纲；若无需修改，完整照抄当前章节大纲
 </chapter_outline>
 
-标签外不得写任何文字。标签名必须完全一致，且两个标签都必须闭合。"""
+标签名必须完全一致，两个标签都必须闭合，标签内不得写占位话。"""
 
 
 def _build_bot1_system(req: Bot1ChatRequest) -> str:
@@ -83,9 +124,59 @@ def _extract_tag_blocks(text: str, tag: str) -> list[str]:
     return [match.strip() for match in re.findall(pattern, text or "", flags=re.IGNORECASE)]
 
 
-def _validate_bot1_response(text: str) -> list[str]:
+def _looks_like_placeholder(text: str) -> bool:
+    normalized = re.sub(r"\s+", "", text or "").strip()
+    if not normalized:
+        return True
+    if normalized in PLACEHOLDER_OUTLINE_TEXTS:
+        return True
+    if normalized.strip("#：:") in PLACEHOLDER_OUTLINE_TEXTS:
+        return True
+    if len(normalized) < 80 and any(item in normalized for item in SHORT_PLACEHOLDER_MARKERS):
+        return True
+    return False
+
+
+def _allows_outline_shrink(req: Bot1ChatRequest) -> bool:
+    latest_user = _latest_user_message(req.messages)
+    content = latest_user["content"] if latest_user else ""
+    return any(keyword in content for keyword in SHRINK_ALLOWED_KEYWORDS)
+
+
+def _validate_outline_block(
+    *,
+    tag: str,
+    content: str,
+    existing: str,
+    shrink_allowed: bool,
+) -> list[str]:
+    issues: list[str] = []
+    if _looks_like_placeholder(content):
+        issues.append(f"<{tag}> 标签块内容不可用")
+        return issues
+
+    existing = (existing or "").strip()
+    if existing and not shrink_allowed:
+        existing_len = len(existing)
+        content_len = len(content.strip())
+        if existing_len >= 240 and content_len < max(120, int(existing_len * 0.45)):
+            issues.append(f"<{tag}> 比当前已保存大纲明显变短，疑似丢失内容")
+    return issues
+
+
+def _validate_bot1_response(text: str, req: Bot1ChatRequest) -> list[str]:
     issues: list[str] = []
     raw = text or ""
+    lowered = raw.lower()
+    shrink_allowed = _allows_outline_shrink(req)
+
+    outline_start = lowered.find("<outline>")
+    chapter_start = lowered.find("<chapter_outline>")
+    outline_end = lowered.find("</outline>")
+    chapter_end = lowered.find("</chapter_outline>")
+    chat_part = raw[:outline_start].strip() if outline_start >= 0 else ""
+    if not chat_part:
+        issues.append("缺少第一部分用户聊天正文")
 
     for tag in REQUIRED_OUTLINE_TAGS:
         blocks = _extract_tag_blocks(raw, tag)
@@ -94,15 +185,30 @@ def _validate_bot1_response(text: str) -> list[str]:
             continue
         if len(blocks) > 1:
             issues.append(f"<{tag}> 标签块重复")
-        if not blocks[0].strip():
-            issues.append(f"<{tag}> 标签块内容为空")
-        if blocks[0].strip() in {"同上", "略", "保持不变"}:
-            issues.append(f"<{tag}> 标签块内容不可用")
+        existing = req.current_outline if tag == "outline" else req.chapter_outline
+        issues.extend(
+            _validate_outline_block(
+                tag=tag,
+                content=blocks[0],
+                existing=existing or "",
+                shrink_allowed=shrink_allowed,
+            )
+        )
 
-    outline_start = raw.lower().find("<outline>")
-    chapter_start = raw.lower().find("<chapter_outline>")
     if outline_start >= 0 and chapter_start >= 0 and outline_start > chapter_start:
         issues.append("<outline> 必须出现在 <chapter_outline> 之前")
+    if chapter_start >= 0 and outline_start >= 0:
+        between = raw[outline_start:chapter_start]
+        if "</outline>" not in between.lower():
+            issues.append("<outline> 必须完整闭合后再输出 <chapter_outline>")
+    if outline_end >= 0 and chapter_start >= 0 and outline_end < chapter_start:
+        between_parts = raw[outline_end + len("</outline>") : chapter_start].strip()
+        if between_parts:
+            issues.append("第二部分和第三部分之间不得有额外文字")
+    if chapter_end >= 0:
+        trailing = raw[chapter_end + len("</chapter_outline>") :].strip()
+        if trailing:
+            issues.append("第三部分章节大纲后不得有额外文字")
 
     return issues
 
@@ -120,7 +226,7 @@ def _build_retry_messages(
         previous = previous[:6000] + "\n\n[前一次无效回复已截断]"
 
     retry_messages = [dict(messages[0])]
-    strict_instruction = BOT1_TAG_ONLY_RETRY if tag_only else BOT1_STRICT_FORMAT_RETRY
+    strict_instruction = BOT1_MINIMAL_THREE_PART_RETRY if tag_only else BOT1_STRICT_FORMAT_RETRY
     retry_messages[0]["content"] = f"{retry_messages[0]['content']}\n\n{strict_instruction}"
 
     if len(messages) > 1:
@@ -137,13 +243,14 @@ def _build_retry_messages(
     if tag_only:
         retry_user_content = (
             f"上一版未通过格式校验：{issue_text}。\n"
-            "只返回 <outline>...</outline> 与 <chapter_outline>...</chapter_outline> 两个标签块。"
+            "请只返回三部分：第一部分一句话回复用户；第二部分 <outline>...</outline>；"
+            "第三部分 <chapter_outline>...</chapter_outline>。"
         )
     else:
         retry_user_content = (
             f"上一版未通过格式校验：{issue_text}。\n"
-            "请重新生成完整 Bot1 回复，必须包含可解析、闭合且内容完整的 "
-            "<outline>...</outline> 与 <chapter_outline>...</chapter_outline>。"
+            "请重新生成完整 Bot1 回复，必须按三部分输出：用户聊天、全文大纲、章节大纲；"
+            "两个大纲标签必须可解析、闭合且内容完整。"
         )
 
     retry_messages.append(
@@ -170,7 +277,7 @@ async def _stream_bot1_with_format_guard(messages: list[dict], req: Bot1ChatRequ
             yield _sse_json({"content": chunk})
 
         response = "".join(chunks)
-        issues = _validate_bot1_response(response)
+        issues = _validate_bot1_response(response, req)
         if not issues:
             return
 

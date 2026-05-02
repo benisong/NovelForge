@@ -249,6 +249,7 @@ async function sendChat(){
 
   S.isGenerating=true;S.abortCtrl=new AbortController();
   $('btnSend').disabled=true;$('outlineLive').style.display='';
+  $('btnConfirmOutline').disabled=true;
   setStatus('busy','Bot1思考中...');addLog('bot1','正在回复...');
   const stableOutline=S.currentOutline;
   const stableChapterOutline=S.chapterOutline;
@@ -279,12 +280,12 @@ async function sendChat(){
       textEl.textContent=stripOutline(full)||'...';
       // 总大纲
       const ol=extractOutline(full);
-      if(ol){$('outlinePreview').textContent=ol;$('outlinePreview').className='outline-body';S.currentOutline=ol;}
+      if(ol){$('outlinePreview').textContent=ol;$('outlinePreview').className='outline-body';}
       // 章节大纲
       const col=extractChapterOutline(full);
-      if(col){$('chapterOutlinePreview').textContent=col;$('chapterOutlinePreview').className='outline-body';S.chapterOutline=col;$('btnConfirmOutline').disabled=false;}
+      if(col){$('chapterOutlinePreview').textContent=col;$('chapterOutlinePreview').className='outline-body';}
       // 只要有任一大纲就允许确认
-      if(ol||col) $('btnConfirmOutline').disabled=false;
+      if(ol||col) $('btnConfirmOutline').disabled=true;
       $('chatMessages').scrollTop=99999;
     },S.abortCtrl.signal);
 

@@ -177,7 +177,6 @@ const sendMessage = async () => {
         },
         onChunk: (_chunk, full) => {
           assistantMessage.content = full;
-          syncOutlines(full);
           scrollToBottom();
         },
       },
