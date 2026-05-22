@@ -188,7 +188,7 @@ async def login_submit(workspace: str, password: str = Form("")):
         max_age=ws.COOKIE_MAX_AGE,
         httponly=True,
         samesite=ws.COOKIE_SAMESITE,
-        secure=False,  # 部署时 Nginx 终止 TLS；直连 HTTPS 时改为 True
+        secure=ws.COOKIE_SECURE,
         path="/",
     )
     return resp
@@ -262,7 +262,11 @@ async def admin_login_page(request: Request, error: str = ""):
     raw = request.cookies.get(ws.ADMIN_COOKIE_NAME, "")
     if ws.verify_admin_cookie(raw):
         return RedirectResponse(url="/admin", status_code=302)
-    html = _read_static("admin_login.html").replace("{{ERROR_JSON}}", json.dumps(error or ""))
+    locked, secs = ws.is_admin_locked()
+    error_msg = error
+    if locked:
+        error_msg = f"登录失败次数过多，请 {secs} 秒后再试"
+    html = _read_static("admin_login.html").replace("{{ERROR_JSON}}", json.dumps(error_msg or ""))
     return HTMLResponse(html)
 
 
@@ -271,6 +275,12 @@ async def admin_login_submit(
     username: str = Form(""),
     password: str = Form(""),
 ):
+    locked, secs = ws.is_admin_locked()
+    if locked:
+        return RedirectResponse(
+            url=f"/admin/login?error=锁定中（{secs}秒）",
+            status_code=303,
+        )
     if not ws.verify_admin_login(username, password):
         return RedirectResponse(url="/admin/login?error=用户名或密码错误", status_code=303)
     cookie_val = ws.issue_admin_cookie()
@@ -281,7 +291,7 @@ async def admin_login_submit(
         max_age=ws.ADMIN_COOKIE_MAX_AGE,
         httponly=True,
         samesite=ws.COOKIE_SAMESITE,
-        secure=False,  # 部署时 Nginx/CF 终止 TLS；直连 HTTPS 可改 True
+        secure=ws.COOKIE_SECURE,
         path="/",
     )
     return resp

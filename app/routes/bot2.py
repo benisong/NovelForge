@@ -1,4 +1,4 @@
-"""Bot2 创作/重写（per-workspace）"""
+"""Bot2 writing + rewriting routes (per-workspace)."""
 
 import json
 from fastapi import APIRouter, Depends
@@ -19,16 +19,15 @@ router = APIRouter(
 def _build_bot2_system(workspace: str, style_id: str = "", word_count: int = 800,
                        tips: str = "", prev_ending: str = "",
                        bot2_context: str = "") -> str:
-    """构建 Bot2 系统提示词
+    """Build Bot2 system prompt with attention-priority ordering.
 
-    注意力优先的拼接顺序——越"创作当下需要记住"的越靠后：
-
-      1. BOT2_SYSTEM      角色设定（开头锚定身份）
-      2. bot2_context     全局记忆+近期章节缩略（提供前情背景）
-      3. style + example  文风定调与参考
-      4. tips             累积避坑经验
-      5. prev_ending      上一章结尾（衔接用，创作每一句都要记得，放靠后）
-      6. word_count       字数约束（最末尾，user 消息之前的最后一眼）
+    Items the model needs MOST while writing go LAST (recency bias in attention):
+      1. BOT2_SYSTEM      — role + anti-slop rules (anchors identity at start)
+      2. bot2_context     — global memory + recent chapter summaries (background)
+      3. style + example  — style reference and tone calibration
+      4. tips             — accumulated review feedback to avoid
+      5. prev_ending      — last chapter's ending (continuity anchor, keep close)
+      6. word_count       — target length (last thing the model sees before writing)
     """
     parts = [BOT2_SYSTEM]
 
@@ -37,47 +36,51 @@ def _build_bot2_system(workspace: str, style_id: str = "", word_count: int = 800
 
     style = _get_effective_style(workspace, style_id)
     if style:
-        style_parts = [f"【文风要求：{style['name']}】"]
+        style_parts = [f"【Style Requirement: {style['name']}】"]
         if style.get("desc"):
             style_parts.append(style["desc"])
         if style.get("instruction"):
-            style_parts.append(f"以下规则必须优先遵守：\n{style['instruction']}")
+            style_parts.append(f"The following rules MUST be prioritized:\n{style['instruction']}")
         if style.get("example"):
             style_parts.append(
-                "以下是该文风的参考示例片段，请学习它的语言风格、叙事节奏与句法密度，"
-                "在创作中自然吸收，不要照抄：\n\n"
+                "Below is a reference excerpt for this style. Internalize its language, "
+                "narrative rhythm, and syntactic density — absorb naturally, do NOT copy verbatim:\n\n"
                 f"---\n{style['example']}\n---"
             )
         parts.append("\n\n".join(style_parts))
 
     if tips and tips.strip():
         parts.append(
-            f"【历史审核经验（请注意避免以下问题）】\n{tips.strip()}"
+            f"【Accumulated Review Feedback (avoid these issues)】\n{tips.strip()}"
         )
 
     if prev_ending and prev_ending.strip():
         parts.append(
-            f"【上一章结尾片段（请保持文风衔接和叙事连贯）】\n"
+            f"【Previous Chapter Ending (maintain style and narrative continuity)】\n"
             f"---\n{prev_ending.strip()}\n---"
         )
 
     parts.append(
-        f"【字数要求】\n本章内容目标字数约{word_count}字（中文）。"
-        f"请合理控制篇幅，既不要过于简略也不要无意义地灌水凑字数。"
+        f"【Word Count】\nTarget approximately {word_count} Chinese characters. "
+        f"Control length appropriately — neither too sparse nor padded with filler."
     )
 
     return "\n\n".join(parts)
 
 
 def _build_outline_block(outline: str, chapter_outline: str) -> str:
-    """组装大纲块。总大纲相对稳定放前，章节大纲每章变放后。"""
+    """Build the outline section for the user prompt.
+
+    Full outline (stable) goes first; chapter outline (changes per chapter) goes last
+    for recency attention bias.
+    """
     parts = []
     if outline:
-        parts.append(f"【总大纲】\n{outline}")
+        parts.append(f"【Full Outline】\n{outline}")
     if chapter_outline:
-        parts.append(f"【本章详细大纲】\n{chapter_outline}")
+        parts.append(f"【Chapter Detailed Outline】\n{chapter_outline}")
     if not parts:
-        parts.append(f"【本章大纲】\n{outline}")
+        parts.append(f"【Chapter Outline】\n{outline}")
     return "\n\n".join(parts)
 
 
@@ -86,7 +89,7 @@ async def bot2_write(workspace: str, req: Bot2WriteRequest):
     system_prompt = _build_bot2_system(
         workspace, req.style_id, req.word_count, req.tips, req.prev_ending, req.bot2_context
     )
-    # user：总大纲 → 本章详细大纲（把创作当下最关键的章节大纲放末尾高注意力位）
+    # User prompt: full outline → chapter outline (most critical goes last for attention bias)
     user_prompt = _build_outline_block(req.outline, req.chapter_outline)
     messages = [
         {"role": "system", "content": system_prompt},
@@ -109,21 +112,31 @@ async def bot2_rewrite(workspace: str, req: Bot2RewriteRequest):
     system_prompt = _build_bot2_system(
         workspace, req.style_id, req.word_count, req.tips, req.prev_ending, req.bot2_context
     )
-    # user：按 稳定→可变→重要指令 排列
-    #   大纲（本章内稳定）→ 当前正文（每轮变）→ 审核建议（每轮变、最重要）→ 执行指令（末尾）
+    # User prompt ordering: stable → variable → most-important-instruction
+    #   outline (stable within chapter) → draft (changes per round) → feedback (changes per round, critical) → execution instruction (last)
     outline_text = _build_outline_block(req.outline, req.chapter_outline)
     user_prompt = (
         f"{outline_text}\n\n"
-        f"【当前小说正文】\n{req.content}\n\n"
-        f"【审核反馈和修改建议】\n{req.suggestions}\n\n"
-        f"如果反馈中包含【用户补充建议（最高优先级）】，必须优先满足用户补充建议；"
-        f"Bot3 建议与用户补充建议冲突时，以用户补充建议为准。"
-        f"请先在内部把上述反馈拆成逐条检查清单，然后逐项修改正文；不要输出检查清单。"
-        f"每条明确指出的问题都必须在正文里产生可见改动：改写、删除、重排或补足相关段落，不能只换几个同义词。"
-        f"若某个问题涉及文风、AI感、节奏或具体句式，要直接重写对应句段，确保下一轮审核不会因同一问题退回。"
-        f"请参考大纲方向，保留原文的优点和整体结构，只改进建议中指出的具体问题。"
-        f"输出前在内部复查：用户补充建议已优先满足，Bot3逐条建议已处理完毕。"
-        f"直接输出修改后的完整小说正文，目标字数约{req.word_count}字。"
+        f"【Current Draft】\n{req.content}\n\n"
+        f"【Review Feedback & Targeted Fixes Needed】\n{req.suggestions}\n\n"
+        f"IMPORTANT: This is a TARGETED revision, not a full rewrite.\n\n"
+        f"Rules:\n"
+        f"1. For each issue in the feedback, locate the specific sentence or paragraph "
+        f"and rewrite ONLY that part. If the feedback says \"第3段, problem: X\", "
+        f"fix ONLY paragraph 3 — leave paragraphs 1, 2, 4, 5 untouched.\n"
+        f"2. Keep ALL text that was not flagged by the feedback EXACTLY as-is. "
+        f"Do not \"improve\" or rephrase passages that already passed review.\n"
+        f"3. If the feedback contains [User Supplemental Suggestions (HIGHEST PRIORITY)], "
+        f"those take precedence over Bot3 suggestions when there is a conflict.\n"
+        f"4. Internally make a checklist: which locations need changes? Apply only "
+        f"those changes. Do NOT output the checklist.\n"
+        f"5. Every fix must be a VISIBLE change at the flagged location: rewrite, "
+        f"delete, reorder, or expand the targeted passage. Do NOT just swap synonyms.\n"
+        f"6. Before outputting, verify: all flagged locations have been addressed. "
+        f"All un-flagged text remains unchanged. User suggestions prioritized.\n\n"
+        f"The ideal output is 90%+ identical to the input draft — only the "
+        f"problem areas should differ.\n\n"
+        f"Output the complete revised novel text directly. Target ~{req.word_count} Chinese characters."
     )
     messages = [
         {"role": "system", "content": system_prompt},

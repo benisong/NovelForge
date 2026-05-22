@@ -32,25 +32,43 @@ DIM_LABELS = {
 }
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 KNOWN_TAGS = ("scores", "rewrite_plan", "analysis", "item", "items")
+BOT3_FORMAT_RETRY_LIMIT = 1  # max 1 auto-retry (Bot3 responses are expensive: non-streaming, full parse)
 
-BOT3_FORMAT_ANCHOR = """## 输出格式硬约束（系统强制，不可覆盖）
-- 只允许输出 <scores>、<rewrite_plan>、<analysis>、<item> 四种标签块，顺序固定
-- <scores> 必须包含 literary / logic / style / ai_feel 四项，格式如 literary=8.5
-- <rewrite_plan> 必须写 3-6 行，直接写给 Bot2 执行，按优先级排序，禁止空话
-- 每条 <item> 必须包含 dim / severity / location / problem / suggestion 五个字段
-- suggestion 必须是可执行改法；禁止只写“加强描写 / 优化语言 / 增加细节 / 调整节奏”这类空泛建议
-- 如问题涉及某一句或某一段的具体表达，suggestion 优先给出替换方向，必要时直接给一句示范改写
-- 禁止输出 JSON、markdown 列表或代码围栏；禁止在标签外输出任何自然语言
-- 未通过审核时至少输出 4 条 item；复审模式除外，复审只输出真实未解决或新发现的问题，不为凑数量重复旧建议；通过审核时至少保留 2 条 low item 作为可选优化
+BOT3_FORMAT_ANCHOR = """## Output Format Hard Constraints (system-enforced, cannot be overridden)
+- Only FOUR tag blocks allowed: <scores>, <rewrite_plan>, <analysis>, <item> — in that fixed order
+- <scores> MUST contain all four: literary / logic / style / ai_feel, format: literary=8.5
+- <rewrite_plan> MUST contain 3-6 lines, directly addressed to Bot2 for execution, ordered by priority. No filler.
+- Each <item> MUST contain all five fields: dim / severity / location / problem / suggestion
+- suggestion MUST be an executable fix. Forbidden: vague filler like "加强描写 / 优化语言 / 增加细节 / 调整节奏"
+- If the issue concerns a specific sentence or paragraph, suggestion should prioritize a replacement direction; if possible, give a concrete rewrite example
+- NO JSON, markdown lists, or code fences. NO natural-language text outside the four tag blocks.
+- Failing review: at least 4 items. Re-review mode exception: in re-review, only output genuinely unresolved or newly discovered issues. Do not repeat old suggestions just to meet a quota. Passing review: at least 2 low items retained as optional improvements.
 """
 
-BOT3_REREVIEW_ANCHOR = """## 复审硬约束
-- 当前稿件是 Bot2 按上一轮建议重写后的版本，你必须先判断上一轮建议是否已经被解决
-- 已经解决的问题不要重复输出 item；不要为了凑数量复述上一轮泛化建议
-- 未解决的问题必须基于当前稿件给出新证据，并在 problem 字段开头写“上一轮问题仍未解决：”
-- 如果上一轮建议写得太泛，你要把它转成更具体、可执行的 rewrite_plan，而不是原样复制
-- 新发现的问题可以提出，但必须和上一轮残留问题区分清楚
+BOT3_REREVIEW_ANCHOR = """## Re-Review Hard Constraints
+- The current draft is Bot2's rewrite based on the previous round's suggestions. You MUST first judge whether the previous suggestions have been resolved.
+- Do NOT repeat items for issues that have already been fixed. Do NOT rehash the previous round's vague suggestions just to meet a quota.
+- For unresolved issues: you MUST cite new evidence from the current draft, and prefix the problem field with "Previous issue still unresolved: "
+- If the previous suggestions were too vague, translate them into more specific, executable rewrite_plan items — do NOT copy them verbatim.
+- Newly discovered issues can be raised, but MUST be clearly distinguished from leftover issues from the previous round.
 """
+
+BOT3_STRICT_FORMAT_RETRY = """## CRITICAL: Your previous response failed format parsing. Output again now.
+
+Follow these rules EXACTLY — do not improvise:
+
+1. Output ONLY these four tag blocks IN ORDER: <scores>, <rewrite_plan>, <analysis>, <item>...
+2. <scores> MUST contain all four dimensions with numeric values:
+   literary=X.X
+   logic=X.X
+   style=X.X
+   ai_feel=X.X
+3. <rewrite_plan> MUST contain 3-6 actionable lines. No filler.
+4. <analysis> must be 2-3 sentences.
+5. Each <item> MUST have all five fields: dim, severity, location, problem, suggestion.
+6. Every tag MUST be properly closed. No text outside the four tag blocks.
+
+OUTPUT NOTHING ELSE. NO preamble, NO markdown, NO code fences, NO commentary."""
 
 _KEY_MAP = {
     "文学性": "literary",
@@ -109,9 +127,21 @@ def _parse_kv_line(line: str) -> tuple[str | None, str | None]:
 
 
 def _extract_tag_block(result: str, tag: str) -> str:
+    """Extract content from a balanced or unbalanced tag block.
+
+    The balanced regex would match across other tag boundaries when tags are
+    mis-nested (e.g. <scores>...<rewrite_plan>...</rewrite_plan></scores>).
+    We validate that matched content doesn't contain other structural tags,
+    falling through to the unbalanced path when it does.
+    """
     balanced = re.search(fr"<{tag}>\s*(.*?)\s*</{tag}>", result, re.DOTALL | re.IGNORECASE)
     if balanced:
-        return balanced.group(1).strip()
+        content = balanced.group(1).strip()
+        # Reject matches that swallowed other structural tag blocks
+        other_tags = "|".join(t for t in KNOWN_TAGS if t != tag)
+        if not other_tags or not re.search(fr"</?({other_tags})\b", content, re.IGNORECASE):
+            return content
+        # Content contains other tags — mis-nested. Fall through to unbalanced.
 
     next_tags = "|".join(KNOWN_TAGS)
     unbalanced = re.search(
@@ -140,7 +170,13 @@ def _clip_prompt_text(value: str | None, max_chars: int = 6000) -> str:
     text = str(value or "").strip()
     if len(text) <= max_chars:
         return text
-    return text[:max_chars].rstrip() + "\n...（上一轮建议过长，已截断）"
+    return text[:max_chars].rstrip() + "\n...[previous suggestions truncated]"
+
+
+# Minimum character length for problem/suggestion to be considered substantive.
+# Items with content shorter than this are likely noise from truncated or
+# garbled LLM output — they carry no actionable information for Bot2.
+_MIN_MEANINGFUL_LEN = 8
 
 
 def _normalize_items(items: list[dict]) -> list[dict]:
@@ -149,21 +185,37 @@ def _normalize_items(items: list[dict]) -> list[dict]:
         problem = _cleanup_text(item.get("problem", ""))
         suggestion = _cleanup_text(item.get("suggestion", ""))
         location = _cleanup_text(item.get("location", ""))
+
+        # Drop items with no content at all
         if not (problem or suggestion or location):
             continue
 
+        # Drop items whose only "content" is a dim+severity pair with no
+        # substantive review text. Common artifact of truncated <item> blocks
+        # that got cut off after the severity field.
+        if len(problem) < _MIN_MEANINGFUL_LEN and len(suggestion) < _MIN_MEANINGFUL_LEN:
+            if not location or location == "全文":
+                continue
+
         if not problem and suggestion:
-            problem = "该处需要按审核意见重写"
+            problem = "This passage needs revision per review feedback"
         if not suggestion and problem:
-            suggestion = f"围绕“{problem}”直接重写这一处，给出更具体的动作、对白或因果。"
+            suggestion = (
+                f"Directly rewrite this passage around "
+                f"\"{problem[:_MIN_MEANINGFUL_LEN * 2]}\" — "
+                f"provide more specific action, dialogue, or causality."
+            )
+
+        dim = _normalize_dim(item.get("dim", "literary"))
+        severity = _normalize_severity(item.get("severity", "medium"))
 
         normalized.append(
             {
-                "dim": _normalize_dim(item.get("dim", "literary")),
-                "severity": _normalize_severity(item.get("severity", "medium")),
+                "dim": dim,
+                "severity": severity,
                 "location": location or "全文",
-                "problem": problem or "该处表达或推进存在问题",
-                "suggestion": suggestion or "请直接重写这一处，避免空泛表述。",
+                "problem": problem or "The expression or progression at this location needs improvement",
+                "suggestion": suggestion or "Directly rewrite this passage — avoid vague suggestions.",
             }
         )
     return normalized
@@ -191,7 +243,12 @@ def _extract_all_tag_blocks(result: str, tag: str) -> list[str]:
     ]
     balanced = [block for block in balanced if block]
     if balanced and len(balanced) >= open_count:
-        return balanced
+        # Validate: reject matches that swallowed other structural tag blocks
+        other_tags = "|".join(t for t in KNOWN_TAGS if t != tag)
+        if not other_tags or not any(
+            re.search(fr"</?({other_tags})\b", b, re.IGNORECASE) for b in balanced
+        ):
+            return balanced
 
     next_tags = "|".join(KNOWN_TAGS)
     blocks: list[str] = []
@@ -243,9 +300,16 @@ def _parse_item_dicts_from_block(block: str) -> list[dict]:
 
         key, value = _parse_kv_line(line)
         if key:
+            # Only treat 'dim' as an item boundary when its value is a recognized
+            # dimension key (literary/logic/style/ai_feel or their Chinese equivalents).
+            # This prevents mid-text occurrences like "the dim: atmosphere was..."
+            # from falsely splitting items, while still correctly detecting real dim
+            # fields like "dim=literary" or "dim=人味".
             if key == "dim" and current:
-                items.append(current)
-                current = {}
+                normalized_val = _KEY_MAP.get((value or "").strip().lower(), "")
+                if normalized_val in DIM_KEYS:
+                    items.append(current)
+                    current = {}
             if value:
                 current[key] = value
             current_key = key
@@ -402,7 +466,7 @@ def _items_from_rewrite_plan(rewrite_plan: str) -> list[dict]:
                 "dim": _infer_dim_from_text(line),
                 "severity": severity,
                 "location": "全文",
-                "problem": f"需要优先处理这项重写指令：{line[:60]}",
+                "problem": f"Prioritize this rewrite instruction: {line[:60]}",
                 "suggestion": line,
             }
         )
@@ -439,13 +503,13 @@ def _build_rewrite_brief(
     failing_dims = [DIM_LABELS[key] for key in DIM_KEYS if scores.get(key, 0) < pass_score]
     lines: list[str] = []
     if failing_dims:
-        lines.append(f"先把{'、'.join(failing_dims)}拉回及格线，优先处理硬伤，再做润色。")
+        lines.append(f"First, bring {' / '.join(failing_dims)} back above the pass threshold — fix hard issues before polishing.")
     else:
-        lines.append("保留当前成稿的优点，只做针对性的局部修正，不要整章推倒重来。")
+        lines.append("Preserve the current draft's strengths — only make targeted local corrections. Do not rewrite the entire chapter from scratch.")
 
     for index, item in enumerate(_select_priority_items(scores, items), 1):
         location = item.get("location") or "全文"
-        suggestion = item.get("suggestion") or item.get("problem") or "请直接重写这一处"
+        suggestion = item.get("suggestion") or item.get("problem") or "Directly rewrite this passage"
         lines.append(
             f"{index}. [{DIM_LABELS.get(item.get('dim', 'literary'), '文学性')}] {location}：{suggestion}"
         )
@@ -453,25 +517,54 @@ def _build_rewrite_brief(
     if analysis:
         analysis_hint = analysis.strip().splitlines()[0][:80]
         if analysis_hint:
-            lines.append(f"整体把握：{analysis_hint}")
-
+            lines.append(f"Overall assessment: {analysis_hint}")
     if not items:
-        lines.append("请重新审视主要问题段落，补出可直接执行的重写方案，而不是只保留分数。")
+        lines.append("Re-examine the main problem passages and produce directly executable rewrite plans — do not just keep the scores.")
 
     return "\n".join(lines[:6]).strip()
 
 
 def _detect_truncation(result: str) -> bool:
-    """Return True if any known structural tag is opened but never closed.
+    """Return True if the response appears truncated (incomplete).
 
-    Most common cause: the model hit max_tokens mid-response. We detect this so
-    the parser can stop synthesizing junk items from a half-written rewrite_plan.
+    Detection methods:
+      A. Tag count mismatch — any tag opened more times than closed. Classic
+         max_tokens cutoff mid-tag-block.
+      B. Abrupt ending — last ~80 chars have no closing tag for the most recently
+         opened tag. Catches cases where all tags are nominally balanced but the
+         final block's content was cut off (e.g. <item> has dim/severity but
+         suggestion is missing).
+      C. Partial closing tag at end — response ends with a fragment like '</ite'
+         or '<rewrite_' that was clearly mid-tag.
     """
+    text = result or ""
+
+    # A: Tag count mismatch
     for tag in KNOWN_TAGS:
-        opens = len(re.findall(fr"<{tag}\b[^>]*>", result, re.IGNORECASE))
-        closes = len(re.findall(fr"</{tag}>", result, re.IGNORECASE))
+        opens = len(re.findall(fr"<{tag}\b[^>]*>", text, re.IGNORECASE))
+        closes = len(re.findall(fr"</{tag}>", text, re.IGNORECASE))
         if opens > closes:
             return True
+
+    # B: Last ~80 chars — is the most recently opened tag properly closed?
+    tail = text[-80:]
+    # Find the LAST opening tag in the tail
+    last_open = re.search(
+        fr"<({'|'.join(KNOWN_TAGS)})\b[^>]*>(?!.*</?({'|'.join(KNOWN_TAGS)})\b)",
+        tail,
+        re.IGNORECASE,
+    )
+    if last_open:
+        tag_name = last_open.group(1)
+        # Check if this tag is closed AFTER its position in the tail
+        after_open = tail[last_open.end():]
+        if f"</{tag_name}>" not in after_open.lower():
+            return True
+
+    # C: Partial closing tag at the very end (e.g. '</ite' or '<rewri')
+    if re.search(r"</?[a-z_]{2,15}$", text.strip(), re.IGNORECASE):
+        return True
+
     return False
 
 
@@ -514,10 +607,12 @@ def _parse_bot3_tags(result: str, pass_score: float) -> dict:
                 "scores": {key: scores.get(key, 0) for key in DIM_KEYS},
                 "average": average,
                 "passed": False,
-                "analysis": "（Bot3 回复中途被截断，结果不完整）",
+                "analysis": "(Bot3 response was truncated mid-stream — result incomplete)",
                 "rewrite_brief": (
-                    "Bot3 回复在 16384 token 硬上限内被截断，多半是输入太长或模型生成过于冗余。"
-                    "建议缩短章节内容（缩字数或先用 Bot4 摘要压缩前情）后，再点“再次审核”重新跑一次。"
+                    "Bot3 response was truncated within the 16384 token hard limit — "
+                    "likely the input is too long or the model generated excessive output. "
+                    "Try shortening the chapter content (reduce word count or use Bot4 "
+                    "summary to compress prior context first), then click Re-Review to run again."
                 ),
                 "items": [],
                 "retry_hint": True,
@@ -529,10 +624,11 @@ def _parse_bot3_tags(result: str, pass_score: float) -> dict:
                 "scores": {key: scores.get(key, 0) for key in DIM_KEYS},
                 "average": average,
                 "passed": average >= pass_score,
-                "analysis": analysis or "（审核完成，但未提取到逐条修改建议）",
+                "analysis": analysis or "(Review complete, but no itemized suggestions could be extracted)",
                 "rewrite_brief": (
-                    "Bot3 这次没有给出可解析的逐条建议或重写计划。"
-                    "请展开下方“AI 原始回复”人工补建议，或点“再次审核”重新跑一次。"
+                    "Bot3 did not produce parseable itemized suggestions or a rewrite "
+                    "plan this round. Expand the raw AI response below to manually "
+                    "add suggestions, or click Re-Review to run again."
                 ),
                 "items": [],
                 "retry_hint": True,
@@ -543,7 +639,7 @@ def _parse_bot3_tags(result: str, pass_score: float) -> dict:
             "scores": {key: scores.get(key, 0) for key in DIM_KEYS},
             "average": average,
             "passed": average >= pass_score,
-            "analysis": analysis or "（审核完成）",
+            "analysis": analysis or "(Review complete)",
             "rewrite_brief": rewrite_brief,
             "items": items,
         }
@@ -552,15 +648,15 @@ def _parse_bot3_tags(result: str, pass_score: float) -> dict:
         "scores": {key: 0 for key in DIM_KEYS},
         "average": 0,
         "passed": False,
-        "analysis": "审核结果解析失败",
-        "rewrite_brief": "先重新获取一版有效审核结果，重点补出可执行的修改建议，再交给 Bot2 重写。",
+        "analysis": "Review result parsing failed",
+        "rewrite_brief": "Re-run to get a valid review result — prioritize obtaining executable revision suggestions — then pass to Bot2 for rewrite.",
         "items": [
             {
                 "dim": "literary",
                 "severity": "high",
                 "location": "全文",
-                "problem": "无法解析审核结果",
-                "suggestion": f"Bot3 原始回复预览：{result[:300]}",
+                "problem": "Unable to parse review result",
+                "suggestion": f"Bot3 raw response preview: {result[:300]}",
             }
         ],
         "retry_hint": True,
@@ -591,12 +687,13 @@ async def bot3_review(workspace: str, req: Bot3ReviewRequest):
     style = _get_effective_style(workspace, req.style_id)
     if style:
         if style.get("instruction"):
-            system_parts.append(f"【默认文风约束】\n{style['instruction']}")
+            system_parts.append(f"【Default Style Constraint】\n{style['instruction']}")
         system_parts.append(
-            f"【目标文风：{style['name']}】\n"
-            f"风格描述：{style.get('desc', '')}\n"
-            f"参考示例片段：\n---\n{style['example']}\n---\n"
-            "请在“风格一致性”维度重点判断内容是否贴合上述文风要求。"
+            f"【Target Style: {style['name']}】\n"
+            f"Style description: {style.get('desc', '')}\n"
+            f"Reference excerpt:\n---\n{style['example']}\n---\n"
+            "In the Style Consistency dimension, focus on judging whether the content "
+            "adheres to the above style requirements."
         )
 
     if previous_suggestions:
@@ -605,35 +702,55 @@ async def bot3_review(workspace: str, req: Bot3ReviewRequest):
     system_parts.append(BOT3_FORMAT_ANCHOR)
     messages = [{"role": "system", "content": "\n\n".join(system_parts)}]
 
-    cache_breaker = f"[审核请求 #{uuid.uuid4().hex[:16]}]"
+    cache_breaker = f"[Review request #{uuid.uuid4().hex[:16]}]"
     previous_block = ""
     if previous_suggestions:
         previous_block = (
-            f"【复审信息】\n"
-            f"这是第{review_attempt}轮审核。当前正文已经由 Bot2 按上一轮建议重写。\n"
-            f"上一轮交给 Bot2 的修改要求如下：\n{previous_suggestions}\n\n"
-            "复审时请先逐项核对上一轮要求：已解决的不要重复提；未解决的必须引用当前稿的新证据，"
-            "并给出更具体的替换方向。\n\n"
+            f"【Re-Review Context】\n"
+            f"This is review round {review_attempt}. The current draft has been rewritten "
+            f"by Bot2 based on the previous round's suggestions.\n"
+            f"The previous round's revision requirements sent to Bot2:\n{previous_suggestions}\n\n"
+            "During re-review, check each previous requirement item by item: resolved issues "
+            "should NOT be repeated; unresolved issues MUST cite new evidence from the current "
+            "draft and provide more specific replacement direction.\n\n"
         )
     user_content = (
         f"{cache_breaker}\n\n"
-        f"【大纲要求】\n{req.outline}\n\n"
+        f"【Outline Requirements】\n{req.outline}\n\n"
         f"{previous_block}"
-        f"【待审核的小说内容】\n{req.content}\n\n"
-        f"及格分数线：{req.config.pass_score}分\n\n"
-        "请严格按系统提示中的标签格式输出。重点是给出能直接交给 Bot2 执行的 rewrite_plan，"
-        "以及逐条、可落地的 suggestion；不要只给分数。"
+        f"【Content to Review】\n{req.content}\n\n"
+        f"Pass threshold: {req.config.pass_score}\n\n"
+        "Output strictly in the tag format specified in the system prompt. "
+        "The priority is to produce a rewrite_plan that Bot2 can directly execute, "
+        "along with itemized, actionable suggestions — do not just output scores."
     )
     messages.append({"role": "user", "content": user_content})
 
-    try:
-        result = await call_llm_full(req.config.bot3, messages)
-    except Exception as e:
-        return {"error": str(e)[:500], "retry_hint": True}
+    # Try up to BOT3_FORMAT_RETRY_LIMIT + 1 times (initial + retries)
+    last_review = None
+    for attempt in range(BOT3_FORMAT_RETRY_LIMIT + 1):
+        try:
+            result = await call_llm_full(req.config.bot3, messages)
+        except Exception as e:
+            return {"error": str(e)[:500], "retry_hint": True}
 
-    logger.info("[Bot3] response length %d chars", len(result))
-    logger.debug("[Bot3 raw preview]\n%s", result[:1000])
+        logger.info("[Bot3] response length %d chars (attempt %d)", len(result), attempt + 1)
+        logger.debug("[Bot3 raw preview]\n%s", result[:1000])
 
-    review = _parse_bot3_tags(result, req.config.pass_score)
-    review["_raw_preview"] = result[:800]
-    return review
+        review = _parse_bot3_tags(result, req.config.pass_score)
+        review["_raw_preview"] = result[:800]
+        last_review = review
+
+        # If parsing succeeded (no retry_hint), we're done
+        if not review.get("retry_hint"):
+            return review
+
+        # Retry: rebuild with strict format-only system prompt
+        if attempt < BOT3_FORMAT_RETRY_LIMIT:
+            logger.info("[Bot3] format parse issue detected, retrying with strict prompt")
+            messages = [
+                {"role": "system", "content": BOT3_STRICT_FORMAT_RETRY},
+                {"role": "user", "content": user_content},
+            ]
+
+    return last_review

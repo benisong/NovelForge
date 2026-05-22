@@ -54,6 +54,9 @@ WORKSPACES_DIR.mkdir(parents=True, exist_ok=True)
 COOKIE_PREFIX = "ws_"
 COOKIE_MAX_AGE = 30 * 24 * 3600  # 30 天
 COOKIE_SAMESITE = "lax"
+COOKIE_SECURE = os.environ.get("SECURE_COOKIE", "").strip().lower() in (
+    "1", "true", "yes", "on",
+)
 
 # 管理员账户存在 DATA_ROOT/_admin.json，首次启动自动用 admin/admin 初始化。
 ADMIN_FILE = DATA_ROOT / "_admin.json"
@@ -351,6 +354,15 @@ def require_workspace(
 ADMIN_COOKIE_NAME = "novelforge_admin"
 ADMIN_COOKIE_MAX_AGE = 30 * 24 * 3600  # 30 天
 
+# 管理员登录限速复用工作空间限速机制，使用一个永不与实际 workspace slug 冲突的哨兵 key
+# （合法 slug 必须匹配 ^[a-z0-9][a-z0-9\-]{1,30}[a-z0-9]$，__admin__ 首字符为 _ 不可能命中）
+_ADMIN_RATE_LIMIT_SLUG = "__admin__"
+
+
+def is_admin_locked() -> tuple[bool, int]:
+    """返回 (是否被锁, 剩余秒数)。"""
+    return is_locked(_ADMIN_RATE_LIMIT_SLUG)
+
 
 def _load_admin() -> dict:
     if ADMIN_FILE.exists():
@@ -389,13 +401,24 @@ def get_admin_username() -> str:
 
 
 def verify_admin_login(username: str, password: str) -> bool:
-    """账户名 + 密码校验。"""
+    """账户名 + 密码校验（含限速）。"""
+    locked, _ = is_locked(_ADMIN_RATE_LIMIT_SLUG)
+    if locked:
+        return False
     data = _load_admin()
     if not data:
+        _record_fail(_ADMIN_RATE_LIMIT_SLUG)
         return False
     if (username or "").strip() != data.get("username", ""):
+        _record_fail(_ADMIN_RATE_LIMIT_SLUG)
         return False
-    return _check_password(password or "", data.get("password_hash", ""))
+    ok = _check_password(password or "", data.get("password_hash", ""))
+    if ok:
+        with _fail_lock:
+            _fails.pop(_ADMIN_RATE_LIMIT_SLUG, None)
+        return True
+    _record_fail(_ADMIN_RATE_LIMIT_SLUG)
+    return False
 
 
 def update_admin_password(current: str, new: str) -> None:
