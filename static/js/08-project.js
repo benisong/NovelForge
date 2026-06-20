@@ -29,6 +29,12 @@ document.addEventListener('DOMContentLoaded', () => {
 // 项目持久化
 // ============================================================
 let currentProjectId = null;
+let _saveRevision = 0;
+let _saveRequestSeq = 0;
+let _lastAppliedSaveSeq = 0;
+let _saveInFlight = false;
+let _pendingSave = null;
+let _lastSavedSnapshot = '';
 function genProjectId(){return 'proj_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6);}
 
 function _getActiveTab(){
@@ -36,9 +42,7 @@ function _getActiveTab(){
   return active?active.id.replace('tab-',''):'bot1';
 }
 
-async function saveProject(silent){
-  const name=$('projectName').value.trim()||'未命名项目';
-  if(!currentProjectId) currentProjectId=genProjectId();
+function _buildProjectSaveBody(name){
   // 清理pipelineState中的不可序列化字段（AbortController等），只保留可持久化数据
   let savablePipelineState=null;
   if(S.pipelineState){
@@ -51,8 +55,9 @@ async function saveProject(silent){
       // config里的数据会很大且含敏感信息，不重复保存——恢复时从当前配置取
     };
   }
-  const body={
+  return {
     project_id:currentProjectId, name,
+    save_revision:_saveRevision,
     chapters:S.chapters,
     chat_history:S.chatHistory,
     current_outline:S.currentOutline,
@@ -69,19 +74,60 @@ async function saveProject(silent){
     big_summaries:S.bigSummaries||[],
     chapter_boundary_idx:S.chapterBoundaryIdx||0,
   };
+}
+
+function _stableStringify(value){
+  if(value===null||typeof value!=='object') return JSON.stringify(value);
+  if(Array.isArray(value)) return '['+value.map(_stableStringify).join(',')+']';
+  const keys=Object.keys(value).sort();
+  return '{'+keys.map(k=>JSON.stringify(k)+':'+_stableStringify(value[k])).join(',')+'}';
+}
+
+function _projectSnapshot(body){
+  return _stableStringify(body);
+}
+
+async function _flushPendingSave(){
+  if(_saveInFlight || !_pendingSave) return;
+  const job=_pendingSave;
+  _pendingSave=null;
+  _saveInFlight=true;
   try{
-    const r=await fetch(apiUrl('/api/projects/save'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const r=await fetch(apiUrl('/api/projects/save'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(job.body)});
+    if(r.status===409){
+      const detail=await r.text();
+      throw new Error(detail||'保存版本冲突');
+    }
     if(!r.ok) throw new Error(`HTTP ${r.status}`);
     const d=await r.json();
-    if(d.ok){
+    if(!d.ok) throw new Error(d.error||'保存失败');
+    if(job.seq >= _lastAppliedSaveSeq){
+      _lastAppliedSaveSeq = job.seq;
+      _saveRevision = Number(d.save_revision ?? job.body.save_revision ?? _saveRevision);
+      _lastSavedSnapshot = job.snapshot;
       localStorage.setItem('nf_last_project',currentProjectId);
-      if(!silent){addLog('system',`项目「${name}」已保存`);}
+      if(!job.silent){addLog('system',`项目「${job.name}」已保存`);}
       loadProjectList();
-    }else{
-      throw new Error(d.error||'保存失败');
     }
+  }catch(e){
+    if(!job.silent) addLog('error',`保存失败: ${e.message}`);
+  }finally{
+    _saveInFlight=false;
+    if(_pendingSave) await _flushPendingSave();
   }
-  catch(e){if(!silent)addLog('error',`保存失败: ${e.message}`);}
+}
+
+async function saveProject(silent){
+  const name=$('projectName').value.trim()||'未命名项目';
+  if(!currentProjectId) currentProjectId=genProjectId();
+  const body=_buildProjectSaveBody(name);
+  const snapshot=_projectSnapshot(body);
+  if(snapshot===_lastSavedSnapshot && !_saveInFlight && !_pendingSave){
+    return;
+  }
+  const seq=++_saveRequestSeq;
+  _pendingSave={seq,name,body,snapshot,silent:!!silent};
+  await _flushPendingSave();
 }
 
 // 同步保存（用于beforeunload，使用sendBeacon确保页面关闭时数据不丢失）
@@ -89,28 +135,10 @@ function saveProjectSync(){
   const name=$('projectName').value.trim()||'未命名项目';
   if(!currentProjectId&&S.chatHistory.length===0&&S.chapters.length===0) return;
   if(!currentProjectId) currentProjectId=genProjectId();
-  let savablePipelineState=null;
-  if(S.pipelineState){
-    savablePipelineState={stage:S.pipelineState.stage,attempt:S.pipelineState.attempt,currentContent:S.pipelineState.currentContent||'',context:S.pipelineState.context||'',lastSuggestions:S._lastSuggestions||''};
-  }
-  const body={
-    project_id:currentProjectId, name,
-    chapters:S.chapters,
-    chat_history:S.chatHistory,
-    current_outline:S.currentOutline,
-    chapter_outline:S.chapterOutline||'',
-    current_summary:S.currentSummary,
-    current_content:S.currentContent,
-    reviews:S.reviews,
-    logs:S.logs,
-    pipeline_state:savablePipelineState,
-    active_tab:_getActiveTab(),
-    accumulated_tips:S.accumulatedTips||[],
-    last_rewrite_suggestions:S._lastSuggestions||'',
-    small_summaries:S.smallSummaries||[],
-    big_summaries:S.bigSummaries||[],
-    chapter_boundary_idx:S.chapterBoundaryIdx||0,
-  };
+  const body=_buildProjectSaveBody(name);
+  const snapshot=_projectSnapshot(body);
+  _lastAppliedSaveSeq = _saveRequestSeq;
+  _lastSavedSnapshot = snapshot;
   navigator.sendBeacon(apiUrl('/api/projects/save'), new Blob([JSON.stringify(body)],{type:'application/json'}));
   localStorage.setItem('nf_last_project',currentProjectId);
 }
@@ -157,6 +185,7 @@ async function loadProject(pid){
     if(!r.ok) throw new Error(`HTTP ${r.status}`);
     const d=await r.json();
     currentProjectId=d.project_id;
+    _saveRevision=Number(d.save_revision)||0;
     $('projectName').value=d.name||'';
     S.chatHistory=d.chat_history||[];
     S.chapters=d.chapters||[];
@@ -194,6 +223,7 @@ async function loadProject(pid){
     rebuildReviewHistoryUI();
 
     localStorage.setItem('nf_last_project',currentProjectId);
+    _lastSavedSnapshot = _projectSnapshot(_buildProjectSaveBody(d.name||''));
     addLog('system',`已加载项目「${d.name}」(${S.chapters.length}章)`);
 
     // 恢复上次激活的Tab页
@@ -369,6 +399,9 @@ function resetProjectState(){
   S._lastSuggestions='';
   S.pipelineState=null;
   S.chapterBoundaryIdx=0;
+  _saveRevision=0;
+  _pendingSave=null;
+  _lastSavedSnapshot='';
   rebuildChatUI();updateChapterList();
   $('outlinePreview').textContent='总大纲将在对话过程中自动生成和更新';$('outlinePreview').className='outline-body empty';
   $('chapterOutlinePreview').textContent='章节大纲将在讨论中生成';$('chapterOutlinePreview').className='outline-body empty';

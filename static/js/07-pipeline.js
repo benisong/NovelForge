@@ -30,9 +30,10 @@ async function saveChapterFile(content, chapterNum){
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({project_id:pid, project_name:projectName, chapter_num:chapterNum, content})
     });
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
     const d=await r.json();
     if(d.ok) addLog('system',`第${chapterNum}章正式版已保存: ${d.filename}`);
-    else addLog('error',`章节文件保存失败`);
+    else throw new Error(d.error||'章节文件保存失败');
   }catch(e){addLog('error',`章节文件保存失败: ${e.message}`);}
 }
 
@@ -135,6 +136,7 @@ async function runPipeline(startAttempt, prevContent, config, context){
     let review;
     try{
       const r=await fetch(apiUrl('/api/bot3/review'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(buildBot3ReviewRequest(currentContent,config,attempt)),signal:S.abortCtrl.signal});
+      if(!r.ok) throw new Error(`HTTP ${r.status}`);
       review=await r.json();
       if(review.error&&!review.scores)throw new Error(review.error);
     }catch(e){
@@ -310,6 +312,7 @@ async function retryBot3AndContinue(ps){
   let review;
   try{
     const r=await fetch(apiUrl('/api/bot3/review'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(buildBot3ReviewRequest(ps.currentContent,ps.config,ps.attempt)),signal:S.abortCtrl.signal});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
     review=await r.json();if(review.error&&!review.scores)throw new Error(review.error);
   }catch(e){
     if(e.name==='AbortError'){addLog('system','已停止');resetPipeline();return;}

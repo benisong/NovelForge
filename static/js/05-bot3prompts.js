@@ -25,6 +25,7 @@ async function manualReReview(){
   let review;
   try{
     const r=await fetch(apiUrl('/api/bot3/review'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(buildBot3ReviewRequest(content,config,S._lastSuggestions?2:1))});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
     review=await r.json();
     if(review.error&&!review.scores)throw new Error(review.error);
   }catch(e){
@@ -65,9 +66,7 @@ async function manualReReview(){
 // ---- Bot3 提示词弹窗管理 ----
 async function loadBot3Prompts(){
   try{
-    const r=await fetch(apiUrl('/api/bot3-prompts'));
-    if(!r.ok) throw new Error(`HTTP ${r.status}`);
-    const d=await r.json();
+    const d=await fetchJsonOrThrow('/api/bot3-prompts');
     bot3CustomPrompts=d.prompts||[];
     bot3DefaultPrompt=d.default_prompt||'';
     _updateBot3PromptLabel();
@@ -184,6 +183,10 @@ async function deleteBot3Prompt(){
 
 async function _pushBot3Prompts(){
   try{
-    await fetch(apiUrl('/api/bot3-prompts'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompts:bot3CustomPrompts})});
-  }catch(e){console.warn('保存Bot3提示词失败',e);}
+    const r=await fetch(apiUrl('/api/bot3-prompts'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompts:bot3CustomPrompts})});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+  }catch(e){
+    console.warn('[bot3-prompts] 保存Bot3提示词失败',e);
+    addLog('error',`Bot3提示词保存失败: ${e.message}`);
+  }
 }

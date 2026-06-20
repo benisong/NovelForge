@@ -142,9 +142,26 @@ async def latest_project(workspace: str):
 @router.post("/projects/save")
 async def save_project(workspace: str, req: SaveProjectRequest):
     data_root = workspace_data_dir(workspace)
+    path = _project_path(workspace, req.project_id)
+
+    existing_revision = -1
+    if path.exists():
+        try:
+            existing_payload = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(existing_payload, dict):
+                existing_revision = int(existing_payload.get("save_revision", -1))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            existing_revision = -1
+
+    incoming_revision = int(req.save_revision)
+    if existing_revision >= 0 and incoming_revision < existing_revision:
+        raise HTTPException(
+            409,
+            f"保存版本过旧：current={existing_revision}, incoming={incoming_revision}",
+        )
+
     payload = req.model_dump()
     payload["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    path = _project_path(workspace, req.project_id)
 
     if path.exists():
         backup_dir = data_root / "backups"
@@ -170,7 +187,11 @@ async def save_project(workspace: str, req: SaveProjectRequest):
             logger.warning("自动备份失败: %s", e)
 
     atomic_write_json(path, payload)
-    return {"ok": True, "path": str(path.relative_to(data_root))}
+    return {
+        "ok": True,
+        "path": str(path.relative_to(data_root)),
+        "save_revision": incoming_revision,
+    }
 
 
 @router.get("/projects/{project_id}")

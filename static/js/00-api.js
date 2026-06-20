@@ -44,4 +44,12 @@
     }
     return r;
   };
+
+  window.fetchJsonOrThrow = async function fetchJsonOrThrow(path, init) {
+    const r = await window.apiFetch(path, init);
+    if (!r.ok) {
+      throw new Error(`HTTP ${r.status}`);
+    }
+    return await r.json();
+  };
 })();

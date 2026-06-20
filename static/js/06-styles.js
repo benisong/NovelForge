@@ -6,9 +6,7 @@ let defaultStyleId='';
 
 async function loadStyles(){
   try{
-    const r=await fetch(apiUrl('/api/styles'));
-    if(!r.ok) throw new Error(`HTTP ${r.status}`);
-    const d=await r.json();
+    const d=await fetchJsonOrThrow('/api/styles');
     allStyles=d.styles||[];
     defaultStyleId=(d.default_style_id&&allStyles.find(s=>s.id===d.default_style_id))?d.default_style_id:'';
     if(d.default_word_count) $('wordCountInput').value=d.default_word_count;
@@ -138,12 +136,16 @@ async function saveStyleFromModal(){
 
 async function _pushStylesToServer(){
   try{
-    await fetch(apiUrl('/api/styles'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    const r=await fetch(apiUrl('/api/styles'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       styles:allStyles.filter(x=>!x.preset),
       default_word_count:getWordCount(),
       default_style_id:defaultStyleId||''
     })});
-  }catch(e){console.warn('保存文风失败',e);}
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+  }catch(e){
+    console.warn('[styles] 保存文风失败',e);
+    addLog('error',`文风保存失败: ${e.message}`);
+  }
 }
 
 // ---- 文件导入 ----

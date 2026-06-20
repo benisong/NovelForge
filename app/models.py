@@ -117,6 +117,7 @@ class SaveConfigRequest(BaseModel):
 class SaveProjectRequest(BaseModel):
     project_id: str
     name: str
+    save_revision: int = 0
     chapters: list[dict]
     chat_history: list[dict]
     current_outline: str = ""

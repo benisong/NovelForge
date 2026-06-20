@@ -47,13 +47,8 @@ function initTheme() {
   setTimeout(initStyleDragDrop, 0);
   // 自动加载最近更新的项目（从服务端获取，不依赖localStorage）
   try{
-    const r=await fetch(apiUrl('/api/projects/latest'));
-    if(r.ok){
-      const d=await r.json();
-      if(d.project_id) await loadProject(d.project_id);
-    }else{
-      throw new Error(`HTTP ${r.status}`);
-    }
+    const d=await fetchJsonOrThrow('/api/projects/latest');
+    if(d.project_id) await loadProject(d.project_id);
   }catch(e){
     console.warn('[init] 自动加载最近项目失败',e);
     addLog('error',`最近项目自动加载失败: ${e.message}`);

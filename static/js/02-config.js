@@ -42,7 +42,17 @@ async function fetchModels(bot){
   const url=$(srcBot+'_url').value,key=$(srcBot+'_key').value;
   if(!url||!key){alert('请先填写API地址和密钥');return;}
   const sel=$(bot+'_model');sel.innerHTML='<option value="">获取中...</option>';
-  try{const r=await fetch(apiUrl('/api/models'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base_url:url,api_key:key})});const d=await r.json();if(d.error)throw new Error(d.error);sel.innerHTML='';if(!d.models||!d.models.length){sel.innerHTML='<option value="">无可用模型</option>';return;}d.models.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o);});addLog(bot,`获取到 ${d.models.length} 个模型`);autoSaveConfigAfterModelFetch();}
+  try{
+    const r=await fetch(apiUrl('/api/models'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base_url:url,api_key:key})});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d=await r.json();
+    if(d.error)throw new Error(d.error);
+    sel.innerHTML='';
+    if(!d.models||!d.models.length){sel.innerHTML='<option value="">无可用模型</option>';return;}
+    d.models.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o);});
+    addLog(bot,`获取到 ${d.models.length} 个模型`);
+    autoSaveConfigAfterModelFetch();
+  }
   catch(e){sel.innerHTML='<option value="">获取失败</option>';addLog('error',`${bot}获取模型失败: ${e.message}`);}
 }
 
@@ -146,9 +156,7 @@ async function pushConfigsToServer(){
 
 async function loadConfigsFromServer(){
   try{
-    const r=await fetch(apiUrl('/api/configs'));
-    if(!r.ok) throw new Error(`HTTP ${r.status}`);
-    const d=await r.json();
+    const d=await fetchJsonOrThrow('/api/configs');
     allConfigProfiles=d.configs||[];
     renderConfigProfiles();
     // 自动加载第一个（或上次使用的）
