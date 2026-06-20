@@ -40,6 +40,8 @@
         v-model:show="showDrawer"
         position="left"
         :style="{ width: '70%', height: '100%' }"
+        :close-on-click-overlay="true"
+        @click-overlay="handleDrawerOverlayClick"
       >
         <div class="drawer-header">
           <h3>项目菜单</h3>
@@ -67,7 +69,7 @@
         @change="onSwipeChange"
       >
         <van-swipe-item class="swipe-item">
-          <PlanningView @next="goNextCard" @show-outline="showOutline = true" />
+          <PlanningView @next="goNextCard" @show-outline="openOutlineFromPlanning" />
         </van-swipe-item>
 
         <van-swipe-item class="swipe-item">
@@ -86,8 +88,11 @@
       <van-action-sheet v-model:show="showOutline" title="大纲参考">
         <div class="outline-content">
           <van-collapse v-model="activeOutlineNames">
-            <van-collapse-item title="总大纲" name="global">
-              <div class="outline-text">{{ projectStore.currentOutline || '暂无总大纲' }}</div>
+            <van-collapse-item title="正式总纲" name="official">
+              <div class="outline-text">{{ projectStore.currentOutline || '暂无正式总纲' }}</div>
+            </van-collapse-item>
+            <van-collapse-item v-if="isOutlineWorkspaceMode" title="草稿总纲" name="draft">
+              <div class="outline-text">{{ projectStore.outlineDraft || '暂无草稿总纲' }}</div>
             </van-collapse-item>
             <van-collapse-item title="章节大纲" name="chapter">
               <div class="outline-text">{{ projectStore.chapterOutline || '暂无当前章节大纲' }}</div>
@@ -96,11 +101,30 @@
         </div>
       </van-action-sheet>
     </template>
+
+    <van-dialog
+      v-model:show="showOutlineLeaveConfirm"
+      title="总纲草稿尚未处理"
+      show-cancel-button
+      cancel-button-text="取消离开"
+      confirm-button-text="放弃草稿"
+      @confirm="handleDiscardAndLeave"
+      @cancel="handleCancelLeave"
+    >
+      <div class="outline-leave-dialog">
+        <p>当前总纲草稿还有未提交修改。</p>
+        <p>你可以先提交总纲，或放弃草稿后离开当前工作区。</p>
+        <van-button block type="primary" class="outline-leave-submit-btn" @click="handleSubmitAndLeave">
+          提交总纲并离开
+        </van-button>
+      </div>
+    </van-dialog>
   </div>
 </template>
 
 <script setup>
 import { computed, nextTick, onMounted, ref } from 'vue';
+import { showToast } from 'vant';
 import { useRouter } from 'vue-router';
 
 import { useProjectStore } from '@/stores/project';
@@ -115,16 +139,64 @@ const router = useRouter();
 
 const showDrawer = ref(false);
 const showOutline = ref(false);
-const activeOutlineNames = ref(['global', 'chapter']);
+const activeOutlineNames = ref(['official', 'chapter']);
 const swipeRef = ref(null);
 const writingViewRef = ref(null);
 const reviewViewRef = ref(null);
 const memoryViewRef = ref(null);
 const currentCardIndex = ref(0);
 const newProjectName = ref('');
+const showOutlineLeaveConfirm = ref(false);
+const pendingLeaveAction = ref(null);
 
 const currentProjectName = computed(() => projectStore.projectName || '我的小说');
 const hasOfficialOutline = computed(() => Boolean(String(projectStore.currentOutline || '').trim()));
+const isOutlineWorkspaceMode = computed(() => Boolean(String(projectStore.outlineMode || '').trim()));
+const shouldBlockOutlineNavigation = computed(() => isOutlineWorkspaceMode.value && !!projectStore.outlineDirty);
+
+const requestOutlineLeaveConfirmation = (action) => {
+  pendingLeaveAction.value = action;
+  showDrawer.value = false;
+  showOutlineLeaveConfirm.value = true;
+};
+
+const runPendingLeaveAction = async () => {
+  const action = pendingLeaveAction.value;
+  pendingLeaveAction.value = null;
+  if (typeof action === 'function') {
+    await action();
+  }
+};
+
+const handleCancelLeave = () => {
+  showOutlineLeaveConfirm.value = false;
+  pendingLeaveAction.value = null;
+};
+
+const handleDiscardAndLeave = async () => {
+  projectStore.outlineDraft = '';
+  projectStore.outlineMode = '';
+  projectStore.outlineDirty = false;
+  await projectStore.saveProject();
+  showOutlineLeaveConfirm.value = false;
+  await runPendingLeaveAction();
+};
+
+const handleSubmitAndLeave = async () => {
+  const draft = String(projectStore.outlineDraft || '').trim();
+  if (!draft) {
+    showToast('请先生成总纲草稿，再提交');
+    return;
+  }
+
+  projectStore.currentOutline = draft;
+  projectStore.outlineDraft = '';
+  projectStore.outlineMode = '';
+  projectStore.outlineDirty = false;
+  await projectStore.saveProject();
+  showOutlineLeaveConfirm.value = false;
+  await runPendingLeaveAction();
+};
 
 onMounted(async () => {
   await projectStore.loadConfig();
@@ -164,6 +236,13 @@ const ensureCurrentChapterSaved = async () => {
 };
 
 const goToCard = async (index) => {
+  if (shouldBlockOutlineNavigation.value && index !== currentCardIndex.value) {
+    requestOutlineLeaveConfirmation(async () => {
+      await goToCard(index);
+    });
+    return;
+  }
+
   if (!swipeRef.value) {
     return;
   }
@@ -221,19 +300,56 @@ const startNextChapter = async () => {
   await goToCard(0);
 };
 
+const handleDrawerOverlayClick = () => {
+  if (shouldBlockOutlineNavigation.value) {
+    showDrawer.value = true;
+    requestOutlineLeaveConfirmation(() => {
+      showDrawer.value = false;
+    });
+    return;
+  }
+  showDrawer.value = false;
+};
+
+const openOutlineSheet = () => {
+  activeOutlineNames.value = isOutlineWorkspaceMode.value
+    ? ['official', 'draft', 'chapter']
+    : ['official', 'chapter'];
+  showOutline.value = true;
+};
+
 const openOutlineFromDrawer = () => {
   showDrawer.value = false;
-  showOutline.value = true;
+  openOutlineSheet();
+};
+
+const openOutlineFromPlanning = () => {
+  showDrawer.value = false;
+  openOutlineSheet();
 };
 
 const openSettings = async () => {
   showDrawer.value = false;
+  if (shouldBlockOutlineNavigation.value) {
+    requestOutlineLeaveConfirmation(async () => {
+      await projectStore.saveProject();
+      router.push('/settings');
+    });
+    return;
+  }
   await projectStore.saveProject();
   router.push('/settings');
 };
 
 const backToPC = async () => {
   showDrawer.value = false;
+  if (shouldBlockOutlineNavigation.value) {
+    requestOutlineLeaveConfirmation(async () => {
+      await projectStore.saveProject();
+      window.location.assign('/');
+    });
+    return;
+  }
   await projectStore.saveProject();
   window.location.assign('/');
 };
@@ -353,6 +469,21 @@ const handleCreateProject = async () => {
   font-size: 14px;
   line-height: 1.7;
   color: #323233;
+}
+
+.outline-leave-dialog {
+  padding: 8px 16px 16px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #4b5563;
+}
+
+.outline-leave-dialog p {
+  margin: 0 0 8px;
+}
+
+.outline-leave-submit-btn {
+  margin-top: 12px;
 }
 
 .side-arrow {

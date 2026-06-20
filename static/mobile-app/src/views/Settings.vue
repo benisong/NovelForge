@@ -50,6 +50,26 @@
         </div>
       </section>
 
+      <section class="section-card" v-if="projectStore.projectId && projectStore.currentOutline && !projectStore.outlineMode">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Outline Control</p>
+            <h2>总纲修正</h2>
+          </div>
+          <p class="section-copy">如果你想在不进入普通章节规划的情况下先修总纲，可以从这里进入总纲修正模式。</p>
+        </div>
+
+        <div class="outline-revise-card">
+          <div>
+            <strong>进入总纲修正工作区</strong>
+            <p>会先把当前正式总纲复制成草稿，再回到主工作台继续和 Bot1 讨论修订。</p>
+          </div>
+          <button class="ghost-button" type="button" @click="enterOutlineReviseMode">
+            开始修正总纲
+          </button>
+        </div>
+      </section>
+
       <section class="section-card">
         <div class="section-heading">
           <div>
@@ -867,6 +887,20 @@ async function saveCurrentConfig() {
   showToast('配置已保存');
 }
 
+async function enterOutlineReviseMode() {
+  if (!String(projectStore.currentOutline || '').trim()) {
+    showToast('请先有正式总纲，再进入修正模式');
+    return;
+  }
+
+  projectStore.outlineDraft = String(projectStore.currentOutline || '');
+  projectStore.outlineMode = 'revise';
+  projectStore.outlineDirty = false;
+  await projectStore.saveProject({ force: true });
+  showToast('已进入总纲修正模式');
+  router.push('/project');
+}
+
 function goBack() {
   router.push('/project');
 }
@@ -911,6 +945,30 @@ onMounted(async () => {
   background: var(--app-surface);
   box-shadow: var(--app-shadow);
   backdrop-filter: blur(14px);
+}
+
+.outline-revise-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border-radius: var(--app-radius-lg);
+  border: 1px solid var(--app-border);
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.outline-revise-card strong {
+  display: block;
+  font-size: 15px;
+  color: var(--app-text);
+}
+
+.outline-revise-card p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--app-text-muted);
 }
 
 .hero-card {
