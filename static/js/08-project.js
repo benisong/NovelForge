@@ -69,7 +69,18 @@ async function saveProject(silent){
     big_summaries:S.bigSummaries||[],
     chapter_boundary_idx:S.chapterBoundaryIdx||0,
   };
-  try{const r=await fetch(apiUrl('/api/projects/save'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(d.ok){localStorage.setItem('nf_last_project',currentProjectId);if(!silent){addLog('system',`项目「${name}」已保存`);}loadProjectList();}else{if(!silent)addLog('error','保存失败');}}
+  try{
+    const r=await fetch(apiUrl('/api/projects/save'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d=await r.json();
+    if(d.ok){
+      localStorage.setItem('nf_last_project',currentProjectId);
+      if(!silent){addLog('system',`项目「${name}」已保存`);}
+      loadProjectList();
+    }else{
+      throw new Error(d.error||'保存失败');
+    }
+  }
   catch(e){if(!silent)addLog('error',`保存失败: ${e.message}`);}
 }
 
@@ -141,7 +152,10 @@ async function loadProjectList(){
 }
 
 async function loadProject(pid){
-  try{const r=await fetch(apiUrl(`/api/projects/${pid}`));if(!r.ok)throw new Error('加载失败');const d=await r.json();
+  try{
+    const r=await fetch(apiUrl(`/api/projects/${pid}`));
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d=await r.json();
     currentProjectId=d.project_id;
     $('projectName').value=d.name||'';
     S.chatHistory=d.chat_history||[];
@@ -373,7 +387,10 @@ function resetProjectState(){
 async function exportProject(){
   if(!currentProjectId&&S.chapters.length===0){alert('没有可导出的内容');return;}
   await saveProject();if(!currentProjectId)return;
-  try{const r=await fetch(apiUrl(`/api/projects/${currentProjectId}/export`),{method:'POST'});const d=await r.json();
+  try{
+    const r=await fetch(apiUrl(`/api/projects/${currentProjectId}/export`),{method:'POST'});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d=await r.json();
     const blob=new Blob([d.text],{type:'text/plain;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=($('projectName').value||'novel')+'.txt';a.click();URL.revokeObjectURL(a.href);
     addLog('system',`已导出，共${d.word_count}字`);
   }catch(e){addLog('error',`导出失败: ${e.message}`);}
