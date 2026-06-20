@@ -153,6 +153,7 @@ const currentProjectName = computed(() => projectStore.projectName || '我的小
 const hasOfficialOutline = computed(() => Boolean(String(projectStore.currentOutline || '').trim()));
 const isOutlineWorkspaceMode = computed(() => Boolean(String(projectStore.outlineMode || '').trim()));
 const shouldBlockOutlineNavigation = computed(() => isOutlineWorkspaceMode.value && !!projectStore.outlineDirty);
+const shouldStayOnPlanningCard = computed(() => isOutlineWorkspaceMode.value || !hasOfficialOutline.value);
 
 const requestOutlineLeaveConfirmation = (action) => {
   pendingLeaveAction.value = action;
@@ -194,6 +195,9 @@ const handleSubmitAndLeave = async () => {
   projectStore.outlineMode = '';
   projectStore.outlineDirty = false;
   await projectStore.saveProject();
+  currentCardIndex.value = 0;
+  await nextTick();
+  swipeRef.value?.swipeTo?.(0);
   showOutlineLeaveConfirm.value = false;
   await runPendingLeaveAction();
 };
@@ -205,7 +209,7 @@ onMounted(async () => {
     return;
   }
 
-  if (!hasOfficialOutline.value) {
+  if (shouldStayOnPlanningCard.value) {
     currentCardIndex.value = 0;
     await nextTick();
     swipeRef.value?.swipeTo?.(0);

@@ -223,6 +223,9 @@ const passScore = computed(() => Number(projectStore.config?.pass_score ?? 8));
 const currentStyleId = computed(() =>
   String(projectStore.selectedStyleId || projectStore.defaultStyleId || '').trim(),
 );
+const hasOfficialOutline = computed(() => Boolean(String(projectStore.currentOutline || '').trim()));
+const hasChapterOutline = computed(() => Boolean(String(projectStore.chapterOutline || '').trim()));
+const isOutlineWorkspaceMode = computed(() => Boolean(String(projectStore.outlineMode || '').trim()));
 
 const averageScore = computed(() => {
   const total = scoreList.value.reduce((sum, item) => sum + Number(item.value || 0), 0);
@@ -358,6 +361,21 @@ const runReview = async ({ force = false } = {}) => {
     return;
   }
 
+  if (isOutlineWorkspaceMode.value) {
+    showToast('请先完成当前总纲设计/修正，再进行章节审核');
+    return;
+  }
+
+  if (!hasOfficialOutline.value) {
+    showToast('请先提交正式总纲');
+    return;
+  }
+
+  if (!hasChapterOutline.value) {
+    showToast('请先生成当前章节大纲');
+    return;
+  }
+
   isLoading.value = true;
   try {
     const response = await fetch(apiUrl('/api/bot3/review'), {
@@ -365,7 +383,7 @@ const runReview = async ({ force = false } = {}) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         content,
-        outline: projectStore.currentOutline || projectStore.chapterOutline,
+        outline: projectStore.currentOutline,
         config,
         style_id: currentStyleId.value,
         custom_prompt: '',

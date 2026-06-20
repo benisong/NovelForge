@@ -251,6 +251,11 @@ const backToProjectList = () => {
 };
 
 const startNextChapter = async () => {
+  if (String(projectStore.outlineMode || '').trim()) {
+    showToast('请先完成当前总纲设计/修正，再开始下一章规划');
+    return;
+  }
+
   // 准备一条引导消息预填到 Planning 输入框 —— 让 Bot1 主动用 Bot4 写入上下文的小总结，
   // 回顾本章 + 给出下一章方案。Planning.vue 会监听 projectStore.pendingPlanningPrompt 消费。
   const completedChapter = projectStore.chapters.length > 0

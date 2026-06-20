@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
 
 from ..models import Bot1ChatRequest, OutlineChatRequest, FetchModelsRequest
-from ..prompts import BOT1_SYSTEM
+from ..prompts import BOT1_SYSTEM, BOT1_OUTLINE_SYSTEM
 from ..llm import stream_llm
 from ..workspace import require_workspace
 
@@ -116,17 +116,51 @@ def _build_bot1_system(req: Bot1ChatRequest, mode: Literal["chapter", "outline"]
     keeps attention focused on the most relevant content without truncating normal projects.
     """
     MAX_SYSTEM_CHARS = 20000
-    intro_parts = [BOT1_SYSTEM]
+    intro_parts = [BOT1_OUTLINE_SYSTEM if mode == "outline" else BOT1_SYSTEM]
 
     if mode == "outline":
-        intro_parts.append(
-            "## Active Mode\n"
-            "You are currently in official-outline design/revision mode, not ordinary chapter planning.\n"
-            "- Focus Part 1 on discussing the book-level direction, premise, worldbuilding, character arcs, and structural adjustments.\n"
-            "- In <outline>, output the current best complete OFFICIAL outline draft.\n"
-            "- In <chapter_outline>, output a minimal placeholder chapter-planning note only if no concrete chapter plan exists yet; do not invent detailed chapter beats just to satisfy ordinary planning habits.\n"
-            "- Do not let chapter-planning details dominate the response when the user is clearly revising the official outline."
-        )
+        parts = intro_parts
+        if req.current_outline and req.current_outline.strip():
+            parts.append(f"【Current Official Outline Draft Baseline】\n{req.current_outline.strip()}")
+        if req.context and req.context.strip():
+            parts.append(req.context.strip())
+
+        combined = "\n\n".join(parts)
+        if len(combined) <= MAX_SYSTEM_CHARS:
+            return combined
+
+        base = BOT1_OUTLINE_SYSTEM
+        remaining = MAX_SYSTEM_CHARS - len(base)
+        full_outline = (req.current_outline or "").strip()
+        context = (req.context or "").strip()
+
+        if full_outline and remaining > 500:
+            if len(full_outline) <= remaining:
+                full_block = f"【Current Official Outline Draft Baseline】\n{full_outline}"
+                remaining -= len(full_block) + 2
+            else:
+                keep_start = int(remaining * 0.3)
+                keep_end = remaining - keep_start
+                full_block = (
+                    f"【Current Official Outline Draft Baseline — truncated for attention, ending preserved】\n"
+                    f"{full_outline[:keep_start]}\n\n...\n\n{full_outline[-keep_end:]}"
+                )
+                remaining = 0
+        else:
+            full_block = ""
+
+        if context and remaining > 300:
+            if len(context) <= remaining:
+                context_block = context
+            else:
+                context_block = (
+                    f"[Older summaries trimmed for attention focus]\n"
+                    f"{context[-remaining:]}"
+                )
+        else:
+            context_block = ""
+
+        return "\n\n".join(b for b in [base, full_block, context_block] if b)
 
     parts = intro_parts
 

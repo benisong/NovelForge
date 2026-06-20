@@ -81,7 +81,10 @@ const isGenerating = ref(false);
 const abortController = ref(null);
 
 const hasContent = computed(() => Boolean(String(projectStore.currentContent || '').trim()));
-const canGenerate = computed(() => Boolean(projectStore.currentOutline || projectStore.chapterOutline));
+const hasOfficialOutline = computed(() => Boolean(String(projectStore.currentOutline || '').trim()));
+const hasChapterOutline = computed(() => Boolean(String(projectStore.chapterOutline || '').trim()));
+const isOutlineWorkspaceMode = computed(() => Boolean(String(projectStore.outlineMode || '').trim()));
+const canGenerate = computed(() => hasOfficialOutline.value && hasChapterOutline.value && !isOutlineWorkspaceMode.value);
 const requestStyleId = computed(() =>
   String(projectStore.selectedStyleId || projectStore.defaultStyleId || '').trim(),
 );
@@ -124,7 +127,19 @@ const startGenerating = async (suggestions = []) => {
   }
 
   if (!canGenerate.value) {
-    showToast('先确认总大纲或章节大纲');
+    if (isOutlineWorkspaceMode.value) {
+      showToast('请先完成当前总纲设计/修正，再进入正文创作');
+      return;
+    }
+    if (!hasOfficialOutline.value) {
+      showToast('请先提交正式总纲');
+      return;
+    }
+    if (!hasChapterOutline.value) {
+      showToast('请先生成当前章节大纲');
+      return;
+    }
+    showToast('当前还不满足创作条件');
     return;
   }
 
