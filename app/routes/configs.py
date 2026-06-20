@@ -5,6 +5,7 @@ import json
 from fastapi import APIRouter, Depends
 
 from ..config import config_file
+from ..json_io import atomic_write_json
 from ..models import SaveConfigRequest
 from ..workspace import require_workspace
 
@@ -26,8 +27,7 @@ def _read_configs(workspace: str) -> list[dict]:
 
 def _write_configs(workspace: str, configs: list[dict]) -> None:
     cf = config_file(workspace)
-    cf.parent.mkdir(parents=True, exist_ok=True)
-    cf.write_text(json.dumps(configs, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(cf, configs)
 
 
 @router.get("/configs")

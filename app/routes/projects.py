@@ -5,12 +5,14 @@ import logging
 import re
 import shutil
 import time
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..config import styles_file, workspace_data_dir
+from ..json_io import atomic_write_json
 from ..models import SaveProjectRequest
 from ..styles import _load_styles
 from ..workspace import require_workspace
@@ -72,6 +74,16 @@ def _safe_filename(name: str, fallback: str = "untitled") -> str:
     return cleaned[:128]
 
 
+def _parse_updated_timestamp(value: str) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
 @router.get("/projects")
 async def list_projects(workspace: str):
     """列出当前工作空间所有已保存的项目"""
@@ -102,7 +114,8 @@ async def list_projects(workspace: str):
 async def latest_project(workspace: str):
     data_root = workspace_data_dir(workspace)
     latest_id = None
-    latest_time = ""
+    latest_dt: datetime | None = None
+    latest_fallback = ""
     for f in data_root.glob("*.json"):
         if f.name.startswith("_"):
             continue
@@ -114,8 +127,14 @@ async def latest_project(workspace: str):
         if not isinstance(data, dict):
             continue
         updated = data.get("updated", "")
-        if updated > latest_time:
-            latest_time = updated
+        parsed_updated = _parse_updated_timestamp(updated)
+        if parsed_updated is not None:
+            if latest_dt is None or parsed_updated > latest_dt:
+                latest_dt = parsed_updated
+                latest_fallback = updated
+                latest_id = data.get("project_id", f.stem)
+        elif latest_dt is None and updated > latest_fallback:
+            latest_fallback = updated
             latest_id = data.get("project_id", f.stem)
     return {"project_id": latest_id}
 
@@ -150,7 +169,7 @@ async def save_project(workspace: str, req: SaveProjectRequest):
         except OSError as e:
             logger.warning("自动备份失败: %s", e)
 
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(path, payload)
     return {"ok": True, "path": str(path.relative_to(data_root))}
 
 
@@ -232,8 +251,7 @@ async def get_styles(workspace: str):
 @router.post("/styles")
 async def save_styles(workspace: str, data: dict):
     sf = styles_file(workspace)
-    sf.parent.mkdir(parents=True, exist_ok=True)
-    sf.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(sf, data)
     return {"ok": True}
 
 

@@ -35,10 +35,10 @@
 
   window.apiUrl = apiUrl;
 
-  // 401 表示 cookie 失效 → 自动跳回 picker / login
+  // 401/403 都视为当前会话无效 → 自动跳回 login
   window.apiFetch = async function apiFetch(path, init) {
     const r = await fetch(apiUrl(path), init);
-    if (r.status === 401) {
+    if (r.status === 401 || r.status === 403) {
       const back = encodeURIComponent(location.pathname + location.search);
       location.href = '/w/' + slug + '/login?next=' + back;
     }

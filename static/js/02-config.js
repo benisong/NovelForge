@@ -13,8 +13,11 @@ function getConfig(){return{
   bot3:_botCfg('bot3',0.3,16384),
   bot4:_botCfg('bot4',0.5,16384),
   pass_score:parseFloat($('passScore').value)||8,max_retries:parseInt($('maxRetries').value)||3,
-  big_summary_threshold:parseInt($('bigSummaryThreshold').value)||10,
 };}
+
+function getBigSummaryThreshold(){
+  return parseInt($('bigSummaryThreshold').value)||10;
+}
 // 获取Bot4摘要模型名（复用bot4的url和key，只换model）
 function getBot4AbstractModel(){
   const el=$('bot4_abstract_model');
@@ -48,7 +51,7 @@ async function fetchModels(bot){
 // ============================================================
 async function readSSE(url,body,onChunk,signal){
   const r=await fetch(apiUrl(url),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});
-  if(r.status===401){const back=encodeURIComponent(location.pathname+location.search);location.href='/w/'+(window.WORKSPACE||'')+'/login?next='+back;throw new Error('未登录');}
+  if(r.status===401||r.status===403){const back=encodeURIComponent(location.pathname+location.search);location.href='/w/'+(window.WORKSPACE||'')+'/login?next='+back;throw new Error('未登录');}
   if(!r.ok){const t=await r.text();throw new Error(`HTTP ${r.status}: ${t.slice(0,200)}`);}
   const reader=r.body.getReader(),dec=new TextDecoder();
   let buf='',full='';

@@ -107,7 +107,7 @@ function toggleSummaryView(view) {
 // 5. checkBigSummaryReminder - check if big summary is due
 // ============================================================
 function checkBigSummaryReminder() {
-  const threshold = (getConfig().big_summary_threshold) || 10;
+  const threshold = getBigSummaryThreshold();
   // Find the latest big summary's toChapter
   let lastBigTo = 0;
   if (S.bigSummaries && S.bigSummaries.length > 0) {

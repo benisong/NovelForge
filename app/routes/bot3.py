@@ -10,6 +10,7 @@ import uuid
 from fastapi import APIRouter, Depends
 
 from ..config import bot3_prompts_file
+from ..json_io import atomic_write_json
 from ..llm import call_llm_full
 from ..models import Bot3ReviewRequest
 from ..prompts import BOT3_SYSTEM
@@ -108,8 +109,7 @@ def _load_bot3_prompts(workspace: str) -> list[dict]:
 
 def _save_bot3_prompts(workspace: str, prompts: list[dict]) -> None:
     path = bot3_prompts_file(workspace)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(prompts, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(path, prompts)
 
 
 def _parse_kv_line(line: str) -> tuple[str | None, str | None]:
