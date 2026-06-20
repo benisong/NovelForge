@@ -154,6 +154,9 @@ export const useProjectStore = defineStore('project', () => {
   const projectName = ref('我的小说1');
   const chatHistory = ref([]);
   const currentOutline = ref('');
+  const outlineDraft = ref('');
+  const outlineMode = ref('');
+  const outlineDirty = ref(false);
   const chapterOutline = ref('');
   const currentContent = ref('');
   const selectedStyleId = ref('');
@@ -172,6 +175,29 @@ export const useProjectStore = defineStore('project', () => {
 
   const setConfig = (nextConfig) => {
     config.value = normalizeConfig(nextConfig);
+  };
+
+  const createProject = (name = '') => {
+    const normalizedName = String(name || '').trim() || '我的小说1';
+    projectId.value = `proj_${Date.now().toString(36)}`;
+    projectName.value = normalizedName;
+    chatHistory.value = [];
+    currentOutline.value = '';
+    outlineDraft.value = '';
+    outlineMode.value = 'design';
+    outlineDirty.value = false;
+    chapterOutline.value = '';
+    currentContent.value = '';
+    reviews.value = [];
+    summaries.value = [];
+    bigSummaries.value = [];
+    chapters.value = [];
+    lastRewriteSuggestions.value = '';
+    pendingPlanningPrompt.value = '';
+    selectedStyleId.value = defaultStyleId.value;
+    wordCount.value = defaultWordCount.value;
+    localStorage.setItem('nf_last_project', projectId.value);
+    return projectId.value;
   };
 
   const createConfigDraft = () => cloneValue(config.value || createDefaultConfig());
@@ -307,6 +333,9 @@ export const useProjectStore = defineStore('project', () => {
       projectName.value = data.name || '我的小说1';
       chatHistory.value = data.chat_history || [];
       currentOutline.value = data.current_outline || '';
+      outlineDraft.value = data.outline_draft || '';
+      outlineMode.value = data.outline_mode || '';
+      outlineDirty.value = !!data.outline_dirty;
       chapterOutline.value = data.chapter_outline || '';
       currentContent.value = data.current_content || '';
       {
@@ -343,7 +372,7 @@ export const useProjectStore = defineStore('project', () => {
     }
 
     if (!projectId.value) {
-      projectId.value = `proj_${Date.now().toString(36)}`;
+      return false;
     }
 
     const payload = {
@@ -352,6 +381,9 @@ export const useProjectStore = defineStore('project', () => {
       chapters: chapters.value,
       chat_history: chatHistory.value,
       current_outline: currentOutline.value,
+      outline_draft: outlineDraft.value,
+      outline_mode: outlineMode.value,
+      outline_dirty: outlineDirty.value,
       chapter_outline: chapterOutline.value,
       current_content: currentContent.value,
       style_id: selectedStyleId.value,
@@ -389,6 +421,9 @@ export const useProjectStore = defineStore('project', () => {
     projectName,
     chatHistory,
     currentOutline,
+    outlineDraft,
+    outlineMode,
+    outlineDirty,
     chapterOutline,
     currentContent,
     selectedStyleId,
@@ -407,6 +442,7 @@ export const useProjectStore = defineStore('project', () => {
     saveConfig,
     fetchAvailableModels,
     loadStyleDefaults,
+    createProject,
     loadProject,
     saveProject,
     BOT_KEYS,

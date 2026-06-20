@@ -121,6 +121,9 @@ class SaveProjectRequest(BaseModel):
     chapters: list[dict]
     chat_history: list[dict]
     current_outline: str = ""
+    outline_draft: str = ""
+    outline_mode: str = ""
+    outline_dirty: bool = False
     chapter_outline: str = ""
     current_summary: str = ""
     current_content: str = ""

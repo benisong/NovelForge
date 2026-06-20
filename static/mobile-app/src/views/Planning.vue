@@ -11,7 +11,7 @@
           icon="arrow"
           type="primary"
           class="next-btn"
-          :disabled="isGenerating || !hasOutline"
+          :disabled="isGenerating || !canProceedToWriting"
           @click="confirmOutlineAndNext"
         >
           确认并创作
@@ -99,14 +99,16 @@ watch(
 
 const welcomeMessage = {
   role: 'assistant',
-  content: '你好，我是 Bot1。先把这一章的剧情、人物和冲突告诉我，我会边聊边帮你整理总大纲和章节大纲。',
+  content: '你好，我是 Bot1。先把你当前想推进的剧情、人物、冲突或设定告诉我，我会帮你梳理当前章节规划，并结合已有正式总纲继续讨论。',
 };
 
 const displayHistory = computed(() => (
   projectStore.chatHistory.length > 0 ? projectStore.chatHistory : [welcomeMessage]
 ));
 
-const hasOutline = computed(() => Boolean(projectStore.currentOutline || projectStore.chapterOutline));
+const hasOfficialOutline = computed(() => Boolean(String(projectStore.currentOutline || '').trim()));
+const hasChapterOutline = computed(() => Boolean(String(projectStore.chapterOutline || '').trim()));
+const canProceedToWriting = computed(() => hasOfficialOutline.value && hasChapterOutline.value);
 
 const scrollToBottom = async () => {
   await nextTick();
@@ -121,12 +123,8 @@ const formatMessage = (text, role) => {
 };
 
 const syncOutlines = (fullText) => {
-  const outline = extractOutline(fullText);
   const chapterOutline = extractChapterOutline(fullText);
 
-  if (outline) {
-    projectStore.currentOutline = outline;
-  }
   if (chapterOutline) {
     projectStore.chapterOutline = chapterOutline;
   }
@@ -196,8 +194,13 @@ const sendMessage = async () => {
 };
 
 const confirmOutlineAndNext = async () => {
-  if (!hasOutline.value) {
-    showToast('先让 Bot1 生成大纲再继续');
+  if (!hasOfficialOutline.value) {
+    showToast('请先完成正式总纲设计，再进入创作');
+    return;
+  }
+
+  if (!hasChapterOutline.value) {
+    showToast('请先让 Bot1 生成当前章节大纲');
     return;
   }
 
