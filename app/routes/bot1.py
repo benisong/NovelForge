@@ -2,11 +2,12 @@
 
 import re
 import json
+from typing import Literal
 import httpx
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
 
-from ..models import Bot1ChatRequest, FetchModelsRequest
+from ..models import Bot1ChatRequest, OutlineChatRequest, FetchModelsRequest
 from ..prompts import BOT1_SYSTEM
 from ..llm import stream_llm
 from ..workspace import require_workspace
@@ -90,7 +91,7 @@ Complete chapter-level outline. If no changes needed, copy the current chapter o
 Tag names must match exactly. Both tags must be properly closed. No placeholders inside tags."""
 
 
-def _build_bot1_system(req: Bot1ChatRequest) -> str:
+def _build_bot1_system(req: Bot1ChatRequest, mode: Literal["chapter", "outline"] = "chapter") -> str:
     """Assemble Bot1 context in a fixed order, with a generous soft cap for attention quality.
 
     Bot1 only deals with outlines and summaries — not full novel text — so the context
@@ -98,7 +99,19 @@ def _build_bot1_system(req: Bot1ChatRequest) -> str:
     keeps attention focused on the most relevant content without truncating normal projects.
     """
     MAX_SYSTEM_CHARS = 20000
-    parts = [BOT1_SYSTEM]
+    intro_parts = [BOT1_SYSTEM]
+
+    if mode == "outline":
+        intro_parts.append(
+            "## Active Mode\n"
+            "You are currently in official-outline design/revision mode, not ordinary chapter planning.\n"
+            "- Focus Part 1 on discussing the book-level direction, premise, worldbuilding, character arcs, and structural adjustments.\n"
+            "- In <outline>, output the current best complete OFFICIAL outline draft.\n"
+            "- In <chapter_outline>, output a minimal placeholder chapter-planning note only if no concrete chapter plan exists yet; do not invent detailed chapter beats just to satisfy ordinary planning habits.\n"
+            "- Do not let chapter-planning details dominate the response when the user is clearly revising the official outline."
+        )
+
+    parts = intro_parts
 
     if req.current_outline and req.current_outline.strip():
         parts.append(f"【Current Full Outline】\n{req.current_outline.strip()}")
@@ -449,31 +462,56 @@ async def fetch_models(workspace: str, req: FetchModelsRequest):
         return JSONResponse(status_code=500, content={"error": f"返回的不是有效JSON: {resp.text[:200]}"})
 
 
-@router.post("/bot1/chat")
-async def bot1_chat(workspace: str, req: Bot1ChatRequest):
+def _build_bot1_messages(req: Bot1ChatRequest, mode: Literal["chapter", "outline"] = "chapter") -> list[dict]:
     # Message order: system -> previous assistant chat -> previous user -> latest user
     # This lets the AI see the conversation flow: what was asked, how it replied, what's asked now.
     # The outline state in the system prompt reflects what the previous round should have updated.
-    system_msg = {"role": "system", "content": _build_bot1_system(req)}
+    system_msg = {"role": "system", "content": _build_bot1_system(req, mode=mode)}
     messages = [system_msg]
 
-    # Include previous round's conversation for continuity
     last_assistant = _last_assistant_message(req.messages)
     if last_assistant:
         chat_only = _extract_chat_only(last_assistant["content"])
         if chat_only:
-            # Truncate chat if excessively long (rare, but guard against verbose models)
             if len(chat_only) > 800:
                 chat_only = chat_only[:800]
             messages.append({"role": "assistant", "content": chat_only})
 
-    # Include last 2 user messages — gives context of what was asked before
     recent_users = _last_user_messages(req.messages, count=2)
     messages.extend(recent_users)
+    return messages
+
+
+@router.post("/bot1/chat")
+async def bot1_chat(workspace: str, req: Bot1ChatRequest):
+    messages = _build_bot1_messages(req, mode="chapter")
 
     async def generate():
         try:
             async for event in _stream_bot1_with_format_guard(messages, req):
+                yield event
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)[:500]}, ensure_ascii=False)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/bot1/outline-chat")
+async def bot1_outline_chat(workspace: str, req: OutlineChatRequest):
+    outline_req = Bot1ChatRequest(
+        messages=req.messages,
+        config=req.config,
+        current_outline=req.current_outline,
+        chapter_outline="",
+        context=req.context,
+    )
+
+    messages = _build_bot1_messages(outline_req, mode="outline")
+
+    async def generate():
+        try:
+            async for event in _stream_bot1_with_format_guard(messages, outline_req):
                 yield event
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)[:500]}, ensure_ascii=False)}\n\n"

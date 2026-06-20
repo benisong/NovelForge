@@ -268,8 +268,10 @@ const sendMessage = async () => {
   await scrollToBottom();
 
   try {
+    const endpoint = isOutlineWorkspaceMode.value ? '/api/bot1/outline-chat' : '/api/bot1/chat';
+
     const fullText = await readSSE(
-      '/api/bot1/chat',
+      endpoint,
       {
         messages: [userMessage],
         config,
