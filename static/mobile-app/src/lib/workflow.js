@@ -182,11 +182,13 @@ export function extractChapterOutline(text) {
   return matched ? matched[1].trim() : '';
 }
 
-export function stripOutline(text) {
-  return String(text || '')
-    .replace(/<outline>[\s\S]*?<\/outline>/gi, '')
-    .replace(/<chapter_outline>[\s\S]*?<\/chapter_outline>/gi, '')
-    .trim();
+export function stripOutline(text, options = {}) {
+  const { removeChapterOutline = true } = options;
+  let content = String(text || '').replace(/<outline>[\s\S]*?<\/outline>/gi, '');
+  if (removeChapterOutline) {
+    content = content.replace(/<chapter_outline>[\s\S]*?<\/chapter_outline>/gi, '');
+  }
+  return content.trim();
 }
 
 export function buildBot1Context(projectStore) {

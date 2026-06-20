@@ -215,7 +215,9 @@ const scrollToBottom = async () => {
 };
 
 const formatMessage = (text, role) => {
-  const content = role === 'assistant' ? stripOutline(text) : String(text || '');
+  const content = role === 'assistant'
+    ? stripOutline(text, { removeChapterOutline: isNormalPlanningMode.value })
+    : String(text || '');
   return (content || '已更新大纲').replace(/\n/g, '<br/>');
 };
 
@@ -276,7 +278,7 @@ const sendMessage = async () => {
         messages: [userMessage],
         config,
         current_outline: requestOutline,
-        chapter_outline: requestChapterOutline,
+        ...(isNormalPlanningMode.value ? { chapter_outline: requestChapterOutline } : {}),
         context: buildBot1Context(projectStore),
       },
       {

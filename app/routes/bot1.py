@@ -18,6 +18,7 @@ router = APIRouter(
 )
 
 REQUIRED_OUTLINE_TAGS = ("outline", "chapter_outline")
+REQUIRED_OUTLINE_ONLY_TAGS = ("outline",)
 BOT1_FORMAT_RETRY_LIMIT = 2
 PLACEHOLDER_OUTLINE_TEXTS = {
     "同上",
@@ -74,21 +75,37 @@ Tag requirements:
 
 If your previous response had usable content, absorb it. If tags were missing, rebuild from the current outlines, summary memory, and latest user input."""
 
-BOT1_MINIMAL_THREE_PART_RETRY = """## Bot1 Three-Part Fallback Instruction (FINAL SAFETY NET, HIGHEST PRIORITY)
+BOT1_OUTLINE_STRICT_FORMAT_RETRY = """## Bot1 Outline Format Retry Instruction (HIGHEST PRIORITY)
 
-Now output ONLY three parts. Do not explain format errors. Do not add commentary.
+Your previous response failed programmatic validation. Output a new complete response now.
 
-PART 1: One-sentence reply to the user — affirm ideas, point out issues, or give suggestions.
+Strictly follow the 2-part order:
+1. PART 1: Chat with the user — discuss the official outline direction, clarify structure, or give revision advice. NO tags.
+2. PART 2: <outline>...</outline> — complete official-outline draft.
+
+Tag requirements:
+- Output exactly ONE pair of <outline>...</outline>
+- Output Part 1 chat first, then <outline>
+- <outline> must be properly closed; tag name must match exactly
+- Inside <outline>: write COMPLETE, usable official-outline text. No placeholders like "同上", "略", "保持不变", or any variant
+- If the outline needs no changes, copy the current outline VERBATIM — no summarizing, no omitting details
+- Do NOT output <chapter_outline> in this mode
+- NO JSON, code fences, markdown tables; do not explain format errors
+- Before output, silently self-check tag completeness — do NOT write out the check
+
+If your previous response had usable content, absorb it. If the tag was missing, rebuild from the current outline, summary memory, and latest user input."""
+
+BOT1_OUTLINE_MINIMAL_RETRY = """## Bot1 Outline Fallback Instruction (FINAL SAFETY NET, HIGHEST PRIORITY)
+
+Now output ONLY two parts. Do not explain format errors. Do not add commentary.
+
+PART 1: One-sentence reply to the user — affirm ideas, point out structural issues, or ask a concise follow-up.
 
 <outline>
-Complete book-level outline. If no changes needed, copy the current full outline VERBATIM.
+Complete official-outline draft. If no changes needed, copy the current full outline VERBATIM.
 </outline>
 
-<chapter_outline>
-Complete chapter-level outline. If no changes needed, copy the current chapter outline VERBATIM.
-</chapter_outline>
-
-Tag names must match exactly. Both tags must be properly closed. No placeholders inside tags."""
+Do not output <chapter_outline>. Tag name must match exactly. The tag must be properly closed. No placeholders inside the tag."""
 
 
 def _build_bot1_system(req: Bot1ChatRequest, mode: Literal["chapter", "outline"] = "chapter") -> str:
@@ -279,21 +296,21 @@ def _validate_outline_block(
     return issues
 
 
-def _validate_bot1_response(text: str, req: Bot1ChatRequest) -> list[str]:
+def _validate_bot1_response(text: str, req: Bot1ChatRequest, mode: Literal["chapter", "outline"] = "chapter") -> list[str]:
     issues: list[str] = []
     raw = text or ""
     lowered = raw.lower()
     shrink_allowed = _allows_outline_shrink(req)
 
     outline_start = lowered.find("<outline>")
-    chapter_start = lowered.find("<chapter_outline>")
     outline_end = lowered.find("</outline>")
-    chapter_end = lowered.find("</chapter_outline>")
     chat_part = raw[:outline_start].strip() if outline_start >= 0 else ""
     if not chat_part:
         issues.append("缺少第一部分用户聊天正文")
 
-    for tag in REQUIRED_OUTLINE_TAGS:
+    required_tags = REQUIRED_OUTLINE_ONLY_TAGS if mode == "outline" else REQUIRED_OUTLINE_TAGS
+
+    for tag in required_tags:
         blocks = _extract_tag_blocks(raw, tag)
         if not blocks:
             issues.append(f"缺少 <{tag}>...</{tag}> 标签块")
@@ -309,6 +326,19 @@ def _validate_bot1_response(text: str, req: Bot1ChatRequest) -> list[str]:
                 shrink_allowed=shrink_allowed,
             )
         )
+
+    if mode == "outline":
+        chapter_blocks = _extract_tag_blocks(raw, "chapter_outline")
+        if chapter_blocks:
+            issues.append("总纲模式不得输出 <chapter_outline>")
+        if outline_end >= 0:
+            trailing = raw[outline_end + len("</outline>") :].strip()
+            if trailing:
+                issues.append("总纲模式下 <outline> 后不得有额外文字")
+        return issues
+
+    chapter_start = lowered.find("<chapter_outline>")
+    chapter_end = lowered.find("</chapter_outline>")
 
     if outline_start >= 0 and chapter_start >= 0 and outline_start > chapter_start:
         issues.append("<outline> 必须出现在 <chapter_outline> 之前")
@@ -335,6 +365,7 @@ def _build_retry_messages(
     req: Bot1ChatRequest,
     *,
     tag_only: bool = False,
+    mode: Literal["chapter", "outline"] = "chapter",
 ) -> list[dict]:
     """Build a compact retry prompt that preserves the previous round's content.
 
@@ -345,7 +376,11 @@ def _build_retry_messages(
       - Use a clean, short system prompt (retry instruction + current outline state)
       - Only ask the model to fix format, not rethink everything
     """
-    strict_instruction = BOT1_MINIMAL_THREE_PART_RETRY if tag_only else BOT1_STRICT_FORMAT_RETRY
+    strict_instruction = (
+        BOT1_OUTLINE_MINIMAL_RETRY if tag_only else BOT1_OUTLINE_STRICT_FORMAT_RETRY
+    ) if mode == "outline" else (
+        BOT1_MINIMAL_THREE_PART_RETRY if tag_only else BOT1_STRICT_FORMAT_RETRY
+    )
     issue_text = "；".join(issues) if issues else "tag format incomplete"
 
     # Build a clean system prompt: format instructions + current outline state
@@ -397,7 +432,12 @@ def _sse_json(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-async def _stream_bot1_with_format_guard(messages: list[dict], req: Bot1ChatRequest):
+async def _stream_bot1_with_format_guard(
+    messages: list[dict],
+    req: Bot1ChatRequest,
+    *,
+    mode: Literal["chapter", "outline"] = "chapter",
+):
     active_messages = messages
     last_issues: list[str] = []
 
@@ -408,7 +448,7 @@ async def _stream_bot1_with_format_guard(messages: list[dict], req: Bot1ChatRequ
             yield _sse_json({"content": chunk})
 
         response = "".join(chunks)
-        issues = _validate_bot1_response(response, req)
+        issues = _validate_bot1_response(response, req, mode=mode)
         if not issues:
             return
 
@@ -426,6 +466,7 @@ async def _stream_bot1_with_format_guard(messages: list[dict], req: Bot1ChatRequ
                 issues,
                 req,
                 tag_only=attempt == BOT1_FORMAT_RETRY_LIMIT - 1,
+                mode=mode,
             )
 
     raise Exception("Bot1 retries exhausted — still failed format validation: " + "；".join(last_issues))
@@ -488,7 +529,7 @@ async def bot1_chat(workspace: str, req: Bot1ChatRequest):
 
     async def generate():
         try:
-            async for event in _stream_bot1_with_format_guard(messages, req):
+            async for event in _stream_bot1_with_format_guard(messages, req, mode="chapter"):
                 yield event
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)[:500]}, ensure_ascii=False)}\n\n"
@@ -511,7 +552,7 @@ async def bot1_outline_chat(workspace: str, req: OutlineChatRequest):
 
     async def generate():
         try:
-            async for event in _stream_bot1_with_format_guard(messages, outline_req):
+            async for event in _stream_bot1_with_format_guard(messages, outline_req, mode="outline"):
                 yield event
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)[:500]}, ensure_ascii=False)}\n\n"
