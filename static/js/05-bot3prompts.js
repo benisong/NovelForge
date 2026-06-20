@@ -65,11 +65,16 @@ async function manualReReview(){
 // ---- Bot3 提示词弹窗管理 ----
 async function loadBot3Prompts(){
   try{
-    const r=await fetch(apiUrl('/api/bot3-prompts'));const d=await r.json();
+    const r=await fetch(apiUrl('/api/bot3-prompts'));
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d=await r.json();
     bot3CustomPrompts=d.prompts||[];
     bot3DefaultPrompt=d.default_prompt||'';
     _updateBot3PromptLabel();
-  }catch(e){console.warn('加载Bot3提示词失败',e);}
+  }catch(e){
+    console.warn('[bot3-prompts] 加载Bot3提示词失败',e);
+    addLog('error',`Bot3提示词加载失败: ${e.message}`);
+  }
 }
 
 function _updateBot3PromptLabel(){

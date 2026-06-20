@@ -117,7 +117,11 @@ setInterval(()=>{
 },60000);
 
 async function loadProjectList(){
-  try{const r=await fetch(apiUrl('/api/projects'));const d=await r.json();const el=$('projectList');el.innerHTML='';
+  try{
+    const r=await fetch(apiUrl('/api/projects'));
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d=await r.json();
+    const el=$('projectList');el.innerHTML='';
     // 更新菜单按钮标签
     $('projectMenuLabel').textContent=currentProjectId?($('projectName').value||''):'';
 
@@ -130,7 +134,10 @@ async function loadProjectList(){
       row.querySelector('.dli-btn.del').onclick=(e)=>{e.stopPropagation();deleteProject(p.id,p.name);};
       el.appendChild(row);
     });
-  }catch{}
+  }catch(e){
+    console.warn('[projects] 加载项目列表失败',e);
+    addLog('error',`项目列表加载失败: ${e.message}`);
+  }
 }
 
 async function loadProject(pid){
@@ -292,10 +299,14 @@ async function _deleteProjectWithChapterCheck(pid, name, isCurrent){
   let chapterFiles=[];
   try{
     const r=await fetch(apiUrl(`/api/projects/${pid}/chapters`));
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
     const d=await r.json();
     chapterFiles=d.files||[];
     hasChapters=chapterFiles.length>0;
-  }catch{}
+  }catch(e){
+    console.warn('[projects] 读取章节文件列表失败',e);
+    addLog('error',`章节文件列表读取失败: ${e.message}`);
+  }
 
   if(!confirm(`确定删除项目「${name}」？${isCurrent?'所有章节、对话、审核记录将永久丢失。':''}`))return;
 
@@ -305,7 +316,8 @@ async function _deleteProjectWithChapterCheck(pid, name, isCurrent){
   }
 
   try{
-    await fetch(apiUrl(`/api/projects/${pid}?delete_chapters=${deleteChapters}`),{method:'DELETE'});
+    const r=await fetch(apiUrl(`/api/projects/${pid}?delete_chapters=${deleteChapters}`),{method:'DELETE'});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
     addLog('system',`已删除项目「${name}」${deleteChapters?'（含章节文件）':''}`);
     if(isCurrent||currentProjectId===pid){currentProjectId=null;localStorage.removeItem('nf_last_project');resetProjectState();}
     loadProjectList();

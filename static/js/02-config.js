@@ -136,13 +136,19 @@ async function autoSaveConfigAfterModelFetch(){
 
 async function pushConfigsToServer(){
   try{
-    await fetch(apiUrl('/api/configs'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({configs:allConfigProfiles})});
-  }catch(e){console.warn('保存配置失败',e);}
+    const r=await fetch(apiUrl('/api/configs'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({configs:allConfigProfiles})});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+  }catch(e){
+    console.warn('[configs] 保存配置失败',e);
+    addLog('error',`配置保存失败: ${e.message}`);
+  }
 }
 
 async function loadConfigsFromServer(){
   try{
-    const r=await fetch(apiUrl('/api/configs'));const d=await r.json();
+    const r=await fetch(apiUrl('/api/configs'));
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d=await r.json();
     allConfigProfiles=d.configs||[];
     renderConfigProfiles();
     // 自动加载第一个（或上次使用的）
@@ -154,7 +160,10 @@ async function loadConfigsFromServer(){
       applyConfigToFields(target);
       addLog('system',`已自动加载配置「${target.name}」`);
     }
-  }catch{}
+  }catch(e){
+    console.warn('[configs] 加载配置失败',e);
+    addLog('error',`配置加载失败: ${e.message}`);
+  }
 }
 
 function renderConfigProfiles(){

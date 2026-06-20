@@ -6,7 +6,9 @@ let defaultStyleId='';
 
 async function loadStyles(){
   try{
-    const r=await fetch(apiUrl('/api/styles'));const d=await r.json();
+    const r=await fetch(apiUrl('/api/styles'));
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d=await r.json();
     allStyles=d.styles||[];
     defaultStyleId=(d.default_style_id&&allStyles.find(s=>s.id===d.default_style_id))?d.default_style_id:'';
     if(d.default_word_count) $('wordCountInput').value=d.default_word_count;
@@ -16,7 +18,10 @@ async function loadStyles(){
     else if(last&&allStyles.find(s=>s.id===last)) _setSelectedStyle(last, false);
     else if(defaultStyleId) _setSelectedStyle(defaultStyleId, false);
     else _setSelectedStyle('', false);
-  }catch(e){console.warn('加载文风失败',e);}
+  }catch(e){
+    console.warn('[styles] 加载文风失败',e);
+    addLog('error',`文风加载失败: ${e.message}`);
+  }
 }
 
 function renderStyleGrid(){

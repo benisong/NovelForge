@@ -51,6 +51,11 @@ function initTheme() {
     if(r.ok){
       const d=await r.json();
       if(d.project_id) await loadProject(d.project_id);
+    }else{
+      throw new Error(`HTTP ${r.status}`);
     }
-  }catch{}
+  }catch(e){
+    console.warn('[init] 自动加载最近项目失败',e);
+    addLog('error',`最近项目自动加载失败: ${e.message}`);
+  }
 })();
