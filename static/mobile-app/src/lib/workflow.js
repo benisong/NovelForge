@@ -191,7 +191,98 @@ export function stripOutline(text, options = {}) {
   return content.trim();
 }
 
-export function buildBot1Context(projectStore) {
+export function shouldTriggerPlanningExtract(message, projectStore, options = {}) {
+  const {
+    turnThreshold = 4,
+    charThreshold = 1200,
+    explicitTriggers = ['整理一下', '收一下', '总结一下', '帮我归纳', '定稿', '成形'],
+  } = options;
+  const normalized = String(message || '').trim();
+  if (!normalized) {
+    return false;
+  }
+  if (explicitTriggers.some((keyword) => normalized.includes(keyword))) {
+    return true;
+  }
+  return Number(projectStore?.planningTurnsSinceExtract || 0) >= turnThreshold
+    || Number(projectStore?.planningCharsSinceExtract || 0) >= charThreshold;
+}
+
+export function applyPlanningExtract(projectStore, latestUserInput = '', options = {}) {
+  const { recentWindowSize = 6 } = options;
+  const trimmedOutline = String(projectStore?.chapterOutline || '').trim();
+  if (!trimmedOutline) {
+    return false;
+  }
+
+  const recentMessages = Array.isArray(projectStore?.chatHistory)
+    ? projectStore.chatHistory
+      .slice(-recentWindowSize)
+      .map((msg) => `${msg.role === 'user' ? '用户' : 'Bot1'}：${String(msg.content || '').trim()}`)
+      .filter(Boolean)
+      .join('\n')
+    : '';
+
+  projectStore.planningDigest = [
+    latestUserInput ? `用户本轮补充：${latestUserInput}` : '',
+    '已触发一次近期规划提炼。',
+    `当前章节规划：${trimmedOutline}`,
+    recentMessages ? `最近对话窗口：\n${recentMessages}` : '',
+  ].filter(Boolean).join('\n\n');
+  projectStore.planningTurnsSinceExtract = 0;
+  projectStore.planningCharsSinceExtract = 0;
+  return true;
+}
+
+export function buildOutlineDigest(projectStore, latestUserInput = '', options = {}) {
+  const { isReviseMode = false, maxLength = 1200 } = options;
+  const draft = String(projectStore?.outlineDraft || '').trim();
+  const baseline = String(projectStore?.currentOutline || '').trim();
+  const sameAsOfficial = draft && draft === baseline;
+  const digest = [
+    latestUserInput ? `用户本轮补充：${latestUserInput}` : '',
+    isReviseMode ? '当前处于正式总纲修正模式。' : '当前处于正式总纲设计模式。',
+    isReviseMode
+      ? (sameAsOfficial
+          ? '草稿当前仍与正式总纲基线一致，尚未形成新的修正版本。'
+          : '草稿已经偏离正式总纲基线，后续提交将覆盖正式版本。')
+      : '草稿会在提交后成为新的正式总纲。',
+    draft ? `当前总纲草稿：${draft}` : '',
+  ].filter(Boolean).join('\n\n').trim();
+  if (digest.length <= maxLength) {
+    return digest;
+  }
+  return digest.slice(digest.length - maxLength).trim();
+}
+
+export function incrementPlanningExtractCounters(projectStore, message, options = {}) {
+  const { isOutlineMode = false } = options;
+  if (isOutlineMode) {
+    return;
+  }
+  const normalized = String(message || '');
+  projectStore.planningTurnsSinceExtract += 1;
+  projectStore.planningCharsSinceExtract += normalized.length;
+}
+
+export function clearOutlineWorkspaceState(projectStore, options = {}) {
+  const { keepOfficialOutline = true } = options;
+  if (!keepOfficialOutline) {
+    projectStore.currentOutline = '';
+  }
+  projectStore.outlineDraft = '';
+  projectStore.outlineMode = '';
+  projectStore.outlineDirty = false;
+  projectStore.outlineDigest = '';
+}
+
+export function buildBot1Context(projectStore, options = {}) {
+  const {
+    recentUserCount = 2,
+    recentAssistantCount = 2,
+    includePlanningDigest = false,
+    includeOutlineDigest = false,
+  } = options;
   const parts = [];
   const latestBigSummary = projectStore.bigSummaries?.at?.(-1);
   if (latestBigSummary) {
@@ -209,7 +300,136 @@ export function buildBot1Context(projectStore) {
     }
   }
 
+  if (includePlanningDigest) {
+    const planningDigest = String(projectStore.planningDigest || '').trim();
+    if (planningDigest) {
+      parts.push(`【近期章节规划摘要】\n${planningDigest}`);
+    }
+  }
+
+  if (includeOutlineDigest) {
+    const outlineDigest = String(projectStore.outlineDigest || '').trim();
+    if (outlineDigest) {
+      parts.push(`【总纲讨论摘要】\n${outlineDigest}`);
+    }
+  }
+
+  const recentUsers = [];
+  const recentAssistants = [];
+  const history = Array.isArray(projectStore.chatHistory) ? [...projectStore.chatHistory].reverse() : [];
+  for (const msg of history) {
+    if (msg?.role === 'user' && recentUsers.length < recentUserCount) {
+      recentUsers.push(`用户：${String(msg.content || '').trim()}`);
+    }
+    if (msg?.role === 'assistant' && recentAssistants.length < recentAssistantCount) {
+      recentAssistants.push(`Bot1：${String(msg.content || '').trim()}`);
+    }
+    if (recentUsers.length >= recentUserCount && recentAssistants.length >= recentAssistantCount) {
+      break;
+    }
+  }
+
+  const recentWindow = [...recentAssistants.reverse(), ...recentUsers.reverse()].filter(Boolean);
+  if (recentWindow.length) {
+    parts.push(`【最近对话窗口】\n${recentWindow.join('\n\n')}`);
+  }
+
   return parts.join('\n\n');
+}
+
+export function syncPlanningResult(projectStore, fullText, latestUserInput = '', options = {}) {
+  const {
+    isOutlineMode = false,
+    isReviseMode = false,
+    appendDigest,
+  } = options;
+
+  if (isOutlineMode) {
+    const draftOutline = extractOutline(fullText);
+    if (!draftOutline) {
+      return;
+    }
+    projectStore.outlineDraft = draftOutline;
+    projectStore.outlineDirty = true;
+    projectStore.outlineDigest = buildOutlineDigest(projectStore, latestUserInput, {
+      isReviseMode,
+    });
+    return;
+  }
+
+  const chapterOutline = extractChapterOutline(fullText);
+  if (!chapterOutline) {
+    return;
+  }
+  projectStore.chapterOutline = chapterOutline;
+  const previousDigest = String(projectStore.planningDigest || '').trim();
+  projectStore.planningDigest = appendDigest(previousDigest, [
+    latestUserInput ? `用户本轮补充：${latestUserInput}` : '',
+    '已根据本轮讨论更新当前章节规划。',
+  ]);
+}
+
+export function buildPlanningRequestContext(projectStore, options = {}) {
+  const {
+    isOutlineMode = false,
+    recentUserCount = 2,
+    recentAssistantCount = 2,
+  } = options;
+  return buildBot1Context(projectStore, {
+    includePlanningDigest: !isOutlineMode,
+    includeOutlineDigest: isOutlineMode,
+    recentUserCount,
+    recentAssistantCount,
+  });
+}
+
+export function buildPlanningRequestPayload(projectStore, userMessage, config, options = {}) {
+  const {
+    isOutlineMode = false,
+    currentOutline = '',
+    chapterOutline = '',
+    context = '',
+  } = options;
+
+  return {
+    messages: [userMessage],
+    config,
+    current_outline: currentOutline,
+    ...(isOutlineMode ? {} : { chapter_outline: chapterOutline }),
+    context,
+  };
+}
+
+export function buildPlanningRuntimeState(projectStore, options = {}) {
+  const { isOutlineMode = false } = options;
+  const stableState = {
+    currentOutline: projectStore.currentOutline,
+    chapterOutline: projectStore.chapterOutline,
+    planningTurnsSinceExtract: projectStore.planningTurnsSinceExtract,
+    planningCharsSinceExtract: projectStore.planningCharsSinceExtract,
+    planningDigest: projectStore.planningDigest,
+    outlineDigest: projectStore.outlineDigest,
+  };
+
+  const requestOutline = isOutlineMode
+    ? String(projectStore.outlineDraft || projectStore.currentOutline || '')
+    : projectStore.currentOutline;
+  const requestChapterOutline = isOutlineMode ? '' : projectStore.chapterOutline;
+
+  return {
+    stableState,
+    requestOutline,
+    requestChapterOutline,
+  };
+}
+
+export function restorePlanningRuntimeState(projectStore, stableState = {}) {
+  projectStore.currentOutline = stableState.currentOutline ?? '';
+  projectStore.chapterOutline = stableState.chapterOutline ?? '';
+  projectStore.planningTurnsSinceExtract = stableState.planningTurnsSinceExtract ?? 0;
+  projectStore.planningCharsSinceExtract = stableState.planningCharsSinceExtract ?? 0;
+  projectStore.planningDigest = stableState.planningDigest ?? '';
+  projectStore.outlineDigest = stableState.outlineDigest ?? '';
 }
 
 export function buildBot2Context(projectStore) {

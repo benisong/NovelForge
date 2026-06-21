@@ -131,6 +131,10 @@ class SaveProjectRequest(BaseModel):
     outline_draft: str = ""
     outline_mode: str = ""
     outline_dirty: bool = False
+    planning_turns_since_extract: int = 0
+    planning_chars_since_extract: int = 0
+    planning_digest: str = ""
+    outline_digest: str = ""
     chapter_outline: str = ""
     current_summary: str = ""
     current_content: str = ""

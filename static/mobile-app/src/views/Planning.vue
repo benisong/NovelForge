@@ -20,7 +20,7 @@
       </div>
     </div>
 
-    <div class="mode-banner" :class="isOutlineDesignMode ? 'outline-design-banner' : 'chapter-planning-banner'">
+    <div class="mode-banner" :class="modeBannerClass">
       <div class="mode-banner-title">{{ modeTitle }}</div>
       <div class="mode-banner-copy">{{ modeDescription }}</div>
     </div>
@@ -31,6 +31,20 @@
           <span class="outline-draft-title">当前总纲草稿</span>
           <span class="outline-draft-status">{{ outlineDraftStatus }}</span>
         </div>
+        <div v-if="isOutlineReviseMode" class="revise-diff-summary" :class="isDraftSameAsOfficial ? 'revise-diff-pristine' : 'revise-diff-changed'">
+          <div class="revise-diff-summary-title">修正状态</div>
+          <div class="revise-diff-summary-body">
+            {{ isDraftSameAsOfficial
+              ? '你现在看到的草稿仍然等于正式总纲基线，还没有形成新的修正版本。'
+              : '当前草稿已经偏离正式总纲基线，提交后将用这份新版本覆盖正式总纲。'
+            }}
+          </div>
+        </div>
+        <div v-if="isOutlineReviseMode" class="outline-baseline-panel">
+          <div class="outline-baseline-title">正式总纲基线</div>
+          <div class="outline-baseline-content">{{ officialOutlinePreview }}</div>
+        </div>
+        <div v-if="outlineDraftHint" class="outline-draft-hint">{{ outlineDraftHint }}</div>
         <div class="outline-draft-content">{{ outlineDraftPreview }}</div>
         <div class="outline-draft-actions">
           <van-button
@@ -98,12 +112,18 @@ import { showToast } from 'vant';
 
 import { useProjectStore } from '@/stores/project';
 import {
-  buildBot1Context,
-  extractChapterOutline,
-  extractOutline,
+  applyPlanningExtract,
+  buildPlanningRequestContext,
+  buildPlanningRequestPayload,
+  buildPlanningRuntimeState,
+  clearOutlineWorkspaceState,
   getRuntimeConfig,
+  incrementPlanningExtractCounters,
   readSSE,
+  restorePlanningRuntimeState,
+  shouldTriggerPlanningExtract,
   stripOutline,
+  syncPlanningResult,
 } from '@/lib/workflow';
 
 const emit = defineEmits(['next', 'show-outline']);
@@ -153,6 +173,15 @@ const pageTitle = computed(() => {
   }
   return '章节规划';
 });
+const modeBannerClass = computed(() => {
+  if (isOutlineDesignMode.value) {
+    return 'outline-design-banner';
+  }
+  if (isOutlineReviseMode.value) {
+    return 'outline-revise-banner';
+  }
+  return 'chapter-planning-banner';
+});
 const modeTitle = computed(() => {
   if (isOutlineDesignMode.value) {
     return '当前处于正式总纲设计模式';
@@ -167,7 +196,7 @@ const modeDescription = computed(() => {
     return '这一页先不做章节推进，而是先把作品的正式总纲、核心设定和整体走向定下来。';
   }
   if (isOutlineReviseMode.value) {
-    return '这一页会围绕既有正式总纲做修正讨论，当前创作流程先暂时让位给总纲修订。';
+    return '这一页会围绕既有正式总纲做修正讨论。上方会保留正式总纲基线，当前草稿则承接你的新修改。';
   }
   return '这一页用于讨论当前章节该怎么推进，只有正式总纲和章节大纲都齐备后，才能进入正文创作。';
 });
@@ -181,6 +210,25 @@ const outlineDraftPreview = computed(() => {
   }
   if (isOutlineReviseMode.value) {
     return '当前还没有新的修正草稿。你可以先提出要修改的方向，Bot1 生成后会显示在这里。';
+  }
+  return '';
+});
+const officialOutlinePreview = computed(() => {
+  const official = String(projectStore.currentOutline || '').trim();
+  return official || '当前还没有正式总纲基线。';
+});
+const isDraftSameAsOfficial = computed(() => {
+  if (!isOutlineReviseMode.value) {
+    return false;
+  }
+  return String(projectStore.outlineDraft || '').trim() === String(projectStore.currentOutline || '').trim();
+});
+const outlineDraftHint = computed(() => {
+  if (isDraftSameAsOfficial.value) {
+    return '当前草稿尚未偏离正式总纲，你还没有提交新的结构修改。';
+  }
+  if (isOutlineReviseMode.value && String(projectStore.outlineDraft || '').trim()) {
+    return '当前草稿已经和正式总纲产生差异，提交后会覆盖正式版本。';
   }
   return '';
 });
@@ -207,6 +255,19 @@ const canSubmitOutlineDraft = computed(() => isOutlineWorkspaceMode.value && has
 const canDiscardOutlineDraft = computed(() => isOutlineWorkspaceMode.value && (hasOutlineDraft.value || projectStore.outlineDirty));
 const canProceedToWriting = computed(() => isNormalPlanningMode.value && hasOfficialOutline.value && hasChapterOutline.value);
 
+const DIGEST_MAX_LENGTH = 1200;
+
+const appendDigest = (existing, additions) => {
+  const merged = [String(existing || '').trim(), ...additions]
+    .filter(Boolean)
+    .join('\n\n')
+    .trim();
+  if (merged.length <= DIGEST_MAX_LENGTH) {
+    return merged;
+  }
+  return merged.slice(merged.length - DIGEST_MAX_LENGTH).trim();
+};
+
 const scrollToBottom = async () => {
   await nextTick();
   if (chatAreaRef.value) {
@@ -221,21 +282,23 @@ const formatMessage = (text, role) => {
   return (content || '已更新大纲').replace(/\n/g, '<br/>');
 };
 
-const syncOutlines = (fullText) => {
-  if (isOutlineDesignMode.value || isOutlineReviseMode.value) {
-    const draftOutline = extractOutline(fullText);
-    if (draftOutline) {
-      projectStore.outlineDraft = draftOutline;
-      projectStore.outlineDirty = true;
-    }
+const syncOutlines = (fullText, latestUserInput = '') => {
+  syncPlanningResult(projectStore, fullText, latestUserInput, {
+    isOutlineMode: isOutlineWorkspaceMode.value,
+    isReviseMode: isOutlineReviseMode.value,
+    appendDigest,
+  });
+};
+
+const shouldTriggerPlanningExtractLocal = (message) => (
+  isNormalPlanningMode.value && shouldTriggerPlanningExtract(message, projectStore)
+);
+
+const applyPlanningExtractLocal = (latestUserInput = '') => {
+  if (!isNormalPlanningMode.value) {
     return;
   }
-
-  const chapterOutline = extractChapterOutline(fullText);
-
-  if (chapterOutline) {
-    projectStore.chapterOutline = chapterOutline;
-  }
+  applyPlanningExtract(projectStore, latestUserInput);
 };
 
 const sendMessage = async () => {
@@ -252,19 +315,23 @@ const sendMessage = async () => {
 
   const userMessage = { role: 'user', content: message };
   const assistantMessage = { role: 'assistant', content: '' };
-  const stableOutline = projectStore.currentOutline;
-  const stableChapterOutline = projectStore.chapterOutline;
-  const requestOutline = isOutlineDesignMode.value || isOutlineReviseMode.value
-    ? String(projectStore.outlineDraft || projectStore.currentOutline || '')
-    : projectStore.currentOutline;
-  const requestChapterOutline = isNormalPlanningMode.value ? projectStore.chapterOutline : '';
+  const { stableState, requestOutline, requestChapterOutline } = buildPlanningRuntimeState(projectStore, {
+    isOutlineMode: isOutlineWorkspaceMode.value,
+  });
+  const requestContext = buildPlanningRequestContext(projectStore, {
+    isOutlineMode: isOutlineWorkspaceMode.value,
+    recentUserCount: 2,
+    recentAssistantCount: 2,
+  });
   const restoreStableOutlines = () => {
-    projectStore.currentOutline = stableOutline;
-    projectStore.chapterOutline = stableChapterOutline;
+    restorePlanningRuntimeState(projectStore, stableState);
   };
 
   projectStore.chatHistory.push(userMessage);
   projectStore.chatHistory.push(assistantMessage);
+  incrementPlanningExtractCounters(projectStore, message, {
+    isOutlineMode: isOutlineWorkspaceMode.value,
+  });
   inputMsg.value = '';
   isGenerating.value = true;
   await scrollToBottom();
@@ -274,13 +341,12 @@ const sendMessage = async () => {
 
     const fullText = await readSSE(
       endpoint,
-      {
-        messages: [userMessage],
-        config,
-        current_outline: requestOutline,
-        ...(isNormalPlanningMode.value ? { chapter_outline: requestChapterOutline } : {}),
-        context: buildBot1Context(projectStore),
-      },
+      buildPlanningRequestPayload(projectStore, userMessage, config, {
+        isOutlineMode: isOutlineWorkspaceMode.value,
+        currentOutline: requestOutline,
+        chapterOutline: requestChapterOutline,
+        context: requestContext,
+      }),
       {
         onReset: () => {
           restoreStableOutlines();
@@ -295,7 +361,10 @@ const sendMessage = async () => {
     );
 
     assistantMessage.content = fullText;
-    syncOutlines(fullText);
+    syncOutlines(fullText, message);
+    if (shouldTriggerPlanningExtractLocal(message)) {
+      applyPlanningExtractLocal(message);
+    }
     await projectStore.saveProject();
   } catch (error) {
     restoreStableOutlines();
@@ -314,9 +383,7 @@ const submitOutlineDraft = async () => {
   }
 
   projectStore.currentOutline = String(projectStore.outlineDraft || '').trim();
-  projectStore.outlineDraft = '';
-  projectStore.outlineMode = '';
-  projectStore.outlineDirty = false;
+  clearOutlineWorkspaceState(projectStore, { keepOfficialOutline: true });
   await projectStore.saveProject();
   showToast('正式总纲已更新');
 };
@@ -326,9 +393,7 @@ const discardOutlineDraft = async () => {
     return;
   }
 
-  projectStore.outlineDraft = '';
-  projectStore.outlineMode = '';
-  projectStore.outlineDirty = false;
+  clearOutlineWorkspaceState(projectStore, { keepOfficialOutline: true });
   await projectStore.saveProject();
   showToast('已放弃本次总纲草稿');
 };
@@ -379,6 +444,11 @@ onMounted(scrollToBottom);
 .outline-design-banner {
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.18));
   border: 1px solid rgba(79, 70, 229, 0.12);
+}
+
+.outline-revise-banner {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.14), rgba(239, 68, 68, 0.14));
+  border: 1px solid rgba(217, 119, 6, 0.16);
 }
 
 .chapter-planning-banner {
@@ -459,6 +529,67 @@ onMounted(scrollToBottom);
   font-size: 14px;
   line-height: 1.7;
   color: #374151;
+}
+
+.outline-baseline-panel {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.04);
+  border: 1px dashed rgba(15, 23, 42, 0.12);
+}
+
+.revise-diff-summary {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+}
+
+.revise-diff-pristine {
+  background: rgba(148, 163, 184, 0.10);
+  border: 1px solid rgba(100, 116, 139, 0.16);
+}
+
+.revise-diff-changed {
+  background: rgba(245, 158, 11, 0.10);
+  border: 1px solid rgba(217, 119, 6, 0.18);
+}
+
+.revise-diff-summary-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.revise-diff-summary-body {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #4b5563;
+}
+
+.outline-baseline-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.outline-baseline-content {
+  margin-top: 8px;
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #6b7280;
+}
+
+.outline-draft-hint {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.08);
+  font-size: 13px;
+  line-height: 1.6;
+  color: #1d4ed8;
 }
 
 .outline-draft-actions {

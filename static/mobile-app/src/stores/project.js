@@ -157,6 +157,10 @@ export const useProjectStore = defineStore('project', () => {
   const outlineDraft = ref('');
   const outlineMode = ref('');
   const outlineDirty = ref(false);
+  const planningTurnsSinceExtract = ref(0);
+  const planningCharsSinceExtract = ref(0);
+  const planningDigest = ref('');
+  const outlineDigest = ref('');
   const chapterOutline = ref('');
   const currentContent = ref('');
   const selectedStyleId = ref('');
@@ -186,6 +190,10 @@ export const useProjectStore = defineStore('project', () => {
     outlineDraft.value = '';
     outlineMode.value = 'design';
     outlineDirty.value = false;
+    planningTurnsSinceExtract.value = 0;
+    planningCharsSinceExtract.value = 0;
+    planningDigest.value = '';
+    outlineDigest.value = '';
     chapterOutline.value = '';
     currentContent.value = '';
     reviews.value = [];
@@ -336,6 +344,10 @@ export const useProjectStore = defineStore('project', () => {
       outlineDraft.value = data.outline_draft || '';
       outlineMode.value = data.outline_mode || '';
       outlineDirty.value = !!data.outline_dirty;
+      planningTurnsSinceExtract.value = Number(data.planning_turns_since_extract || 0) || 0;
+      planningCharsSinceExtract.value = Number(data.planning_chars_since_extract || 0) || 0;
+      planningDigest.value = data.planning_digest || '';
+      outlineDigest.value = data.outline_digest || '';
       chapterOutline.value = data.chapter_outline || '';
       currentContent.value = data.current_content || '';
       {
@@ -384,6 +396,10 @@ export const useProjectStore = defineStore('project', () => {
       outline_draft: outlineDraft.value,
       outline_mode: outlineMode.value,
       outline_dirty: outlineDirty.value,
+      planning_turns_since_extract: planningTurnsSinceExtract.value,
+      planning_chars_since_extract: planningCharsSinceExtract.value,
+      planning_digest: planningDigest.value,
+      outline_digest: outlineDigest.value,
       chapter_outline: chapterOutline.value,
       current_content: currentContent.value,
       style_id: selectedStyleId.value,
@@ -424,6 +440,10 @@ export const useProjectStore = defineStore('project', () => {
     outlineDraft,
     outlineMode,
     outlineDirty,
+    planningTurnsSinceExtract,
+    planningCharsSinceExtract,
+    planningDigest,
+    outlineDigest,
     chapterOutline,
     currentContent,
     selectedStyleId,
