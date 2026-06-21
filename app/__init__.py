@@ -78,22 +78,6 @@ if not MOBILE_DIR.exists():
 MOBILE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-MOBILE_UA_HINTS = (
-    "iphone", "ipod", "android", "mobile",
-    "windows phone", "opera mini", "iemobile",
-)
-
-
-def _is_mobile_ua(request: Request) -> bool:
-    forced = request.query_params.get("view", "").strip().lower()
-    if forced == "mobile":
-        return True
-    if forced == "desktop":
-        return False
-    ua = request.headers.get("user-agent", "").lower()
-    return any(h in ua for h in MOBILE_UA_HINTS)
-
-
 def _read_static(filename: str) -> str:
     return (STATIC_DIR / filename).read_text(encoding="utf-8")
 
@@ -110,12 +94,13 @@ def _inject_workspace(html: str, slug: str) -> str:
 
 @app.get("/")
 async def index(request: Request):
-    # 只有 1 个工作空间：直接按 UA 跳到对应设备端，不再绕桌面 /w/<slug>/
+    # 统一入口：只要存在工作空间，就直接进入移动端。
     items = ws.list_workspaces_public()
     if len(items) == 1:
         slug = items[0]["slug"]
-        url = f"/m/w/{slug}/" if _is_mobile_ua(request) else f"/w/{slug}/"
-        return RedirectResponse(url=url, status_code=302)
+        return RedirectResponse(url=f"/m/w/{slug}/", status_code=302)
+    if len(items) > 1:
+        return RedirectResponse(url="/m/", status_code=302)
     return HTMLResponse(_read_static("picker.html"))
 
 
@@ -219,10 +204,16 @@ async def workspace_index(workspace: str, request: Request):
     slug, redirect = _workspace_or_redirect(workspace, request)
     if redirect is not None:
         return redirect
-    if _is_mobile_ua(request):
+    return RedirectResponse(url=f"/m/w/{slug}/", status_code=302)
+
+
+@app.get("/m/")
+async def mobile_root(request: Request):
+    items = ws.list_workspaces_public()
+    if len(items) == 1:
+        slug = items[0]["slug"]
         return RedirectResponse(url=f"/m/w/{slug}/", status_code=302)
-    html = _inject_workspace(_read_static("index.html"), slug)
-    return HTMLResponse(html)
+    return HTMLResponse(_read_static("picker.html"))
 
 
 @app.get("/m/w/{workspace}/")

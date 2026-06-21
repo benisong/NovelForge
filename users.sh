@@ -37,8 +37,8 @@ NovelForge 多实例管理
 说明:
   - 每个实例都会有独立的数据目录: data/users/<name>/
   - 每个实例对应一个独立容器和独立端口
-  - PC 端访问: http://服务器IP:<port>
-  - 移动端访问: http://服务器IP:<port>/m/
+  - 主界面访问: http://服务器IP:<port>/m/
+  - 工作空间直达: http://服务器IP:<port>/m/w/<slug>/
 EOF
 }
 
@@ -166,8 +166,8 @@ run_instance() {
 OK: 实例 ${name} 已启动
   容器名: ${container}
   数据目录: ${dir}
-  PC 端: http://服务器IP:${port}
-  移动端: http://服务器IP:${port}/m/
+  主界面: http://服务器IP:${port}/m/
+  工作空间直达: http://服务器IP:${port}/m/w/<slug>/
 EOF
 }
 

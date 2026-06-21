@@ -187,7 +187,7 @@
                 <span class="style-option-desc">{{ style.desc || '暂无描述' }}</span>
               </button>
             </div>
-            <div v-else class="style-empty-state">暂时没有可用文风，请先在 PC 端导入或检查 `/api/styles` 数据。</div>
+            <div v-else class="style-empty-state">暂时没有可用文风，请先导入文风或检查 `/api/styles` 数据。</div>
 
             <div class="style-preview" :class="{ empty: !selectedStyleMeta }">
               <template v-if="selectedStyleMeta">

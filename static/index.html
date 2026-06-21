@@ -7,6 +7,10 @@
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+<div id="legacyDesktopNotice" style="padding:14px 18px;background:#fff7ed;border-bottom:1px solid #fdba74;display:flex;justify-content:center;align-items:center;gap:12px;flex-wrap:wrap;">
+  <span style="font-size:13px;color:#9a3412;font-weight:600;">当前默认主界面已切换为移动端工作台，此页仅保留为旧桌面兼容壳。</span>
+  <a href="#" id="legacyDesktopGoMobile" style="font-size:13px;color:#c2410c;font-weight:700;text-decoration:none;">立即进入移动端</a>
+</div>
 
 <div class="title-bar">
   <span class="logo">&#9997; NovelForge</span>
@@ -386,6 +390,16 @@
   </div>
 </div>
 
+<script>
+(function () {
+  const goMobile = document.getElementById('legacyDesktopGoMobile');
+  if (!goMobile) {
+    return;
+  }
+  const slug = (window.WORKSPACE || '').trim();
+  goMobile.href = slug ? `/m/w/${encodeURIComponent(slug)}/` : '/m/';
+})();
+</script>
 <script src="/static/js/00-api.js"></script>
 <script src="/static/js/01-state.js"></script>
 <script src="/static/js/02-config.js"></script>

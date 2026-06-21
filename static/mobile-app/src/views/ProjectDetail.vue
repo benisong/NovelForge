@@ -49,7 +49,7 @@
         <van-cell-group>
           <van-cell title="查看大纲" is-link @click="openOutlineFromDrawer" />
           <van-cell title="打开设置" is-link @click="openSettings" />
-          <van-cell title="返回 PC 端" is-link @click="backToPC" />
+          <van-cell title="返回首页" is-link @click="backToHome" />
         </van-cell-group>
       </van-popup>
 
@@ -81,7 +81,7 @@
         </van-swipe-item>
 
         <van-swipe-item class="swipe-item">
-          <MemoryView ref="memoryViewRef" @start-next="startNextChapter" @back-home="backToPC" />
+          <MemoryView ref="memoryViewRef" @start-next="startNextChapter" @back-home="backToHome" />
         </van-swipe-item>
       </van-swipe>
 
@@ -345,7 +345,7 @@ const openSettings = async () => {
   router.push('/settings');
 };
 
-const backToPC = async () => {
+const backToHome = async () => {
   showDrawer.value = false;
   if (shouldBlockOutlineNavigation.value) {
     requestOutlineLeaveConfirmation(async () => {

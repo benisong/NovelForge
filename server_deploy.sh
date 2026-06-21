@@ -199,8 +199,8 @@ $DOCKER_CMD image prune -f
 
 echo ""
 echo "✅ 部署完成"
-echo "🌐 PC 端:    http://<服务器IP>:17000"
-echo "📱 移动端:   http://<服务器IP>:17000/m/w/<slug>/"
+echo "📱 主界面:   http://<服务器IP>:17000/m/"
+echo "↪ 工作空间: http://<服务器IP>:17000/m/w/<slug>/"
 echo "📝 查看日志: $DC_CMD logs -f"
 echo ""
 echo "💡 首次使用：访问 http://<服务器IP>:17000/admin"
