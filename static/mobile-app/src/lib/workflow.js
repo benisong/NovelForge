@@ -1,4 +1,4 @@
-import { apiUrl, loginUrl } from '@/api/url';
+import { apiFetch, apiUrl, loginUrl } from '@/api/url';
 
 const BOT_DEFAULTS = {
   bot1: { temperature: 0.7, max_tokens: 16384 },
@@ -234,6 +234,66 @@ export function applyPlanningExtract(projectStore, latestUserInput = '', options
   return true;
 }
 
+export function buildPlanningExtractRequest(projectStore, latestUserInput = '', options = {}) {
+  const { recentWindowSize = 6, maxRecentMessages = 6 } = options;
+  const history = Array.isArray(projectStore?.chatHistory) ? projectStore.chatHistory : [];
+  const recentMessages = history
+    .slice(-recentWindowSize)
+    .filter((msg) => msg?.role === 'user' || msg?.role === 'assistant')
+    .map((msg) => ({
+      role: msg.role,
+      content: String(msg.content || '').trim(),
+    }))
+    .filter((msg) => msg.content)
+    .slice(-maxRecentMessages);
+
+  if (latestUserInput) {
+    const lastMessage = recentMessages[recentMessages.length - 1];
+    if (!lastMessage || lastMessage.role !== 'user' || lastMessage.content !== latestUserInput) {
+      recentMessages.push({ role: 'user', content: latestUserInput });
+    }
+  }
+
+  return {
+    messages: recentMessages,
+    current_outline: String(projectStore?.currentOutline || '').trim(),
+    chapter_outline: String(projectStore?.chapterOutline || '').trim(),
+    context: buildBot1Context(projectStore, {
+      includePlanningDigest: true,
+      recentUserCount: 2,
+      recentAssistantCount: 2,
+    }),
+  };
+}
+
+export async function requestPlanningExtract(projectStore, config, latestUserInput = '', options = {}) {
+  const payload = buildPlanningExtractRequest(projectStore, latestUserInput, options);
+  const response = await apiFetch('/api/bot1/extract-planning', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...payload,
+      config,
+    }),
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(`HTTP ${response.status}: ${message.slice(0, 200)}`);
+  }
+
+  const data = await response.json();
+  const planningDigest = String(data?.planning_digest || '').trim();
+  if (!planningDigest) {
+    throw new Error('Bot1_1 未返回近期规划提炼结果');
+  }
+
+  projectStore.planningDigest = planningDigest;
+  projectStore.planningTurnsSinceExtract = 0;
+  projectStore.planningCharsSinceExtract = 0;
+  return planningDigest;
+}
+
 export function buildOutlineDigest(projectStore, latestUserInput = '', options = {}) {
   const { isReviseMode = false, maxLength = 1200 } = options;
   const draft = String(projectStore?.outlineDraft || '').trim();
@@ -420,6 +480,212 @@ export function buildPlanningRuntimeState(projectStore, options = {}) {
     stableState,
     requestOutline,
     requestChapterOutline,
+  };
+}
+
+export function getPendingSummaryChapter(projectStore) {
+  const nextIndex = Number(projectStore?.summaries?.length || 0);
+  return projectStore?.chapters?.[nextIndex] || null;
+}
+
+export function buildBot4SummaryOutline(projectStore, chapter) {
+  return chapter?.chapter_outline
+    || chapter?.outline
+    || projectStore?.chapterOutline
+    || projectStore?.currentOutline
+    || '';
+}
+
+export async function ensureCurrentSummary(projectStore, config, options = {}) {
+  const {
+    now = nowString,
+    readSSEImpl = readSSE,
+    setGenerating,
+    setActiveTab,
+    setDisplayMode,
+    setActiveSmallSummaries,
+    saveProject = async () => projectStore.saveProject(),
+  } = options;
+
+  const chapter = getPendingSummaryChapter(projectStore);
+  if (!chapter) {
+    return false;
+  }
+
+  setGenerating?.(true);
+  setActiveTab?.('small');
+
+  const chapterNumber = Number(projectStore?.summaries?.length || 0) + 1;
+
+  try {
+    const condensed = await readSSEImpl('/api/bot4/summarize', {
+      content: chapter.content,
+      outline: buildBot4SummaryOutline(projectStore, chapter),
+      config,
+    });
+
+    const abstract = await readSSEImpl('/api/bot4/abstract', {
+      condensed,
+      content: chapter.content,
+      config,
+      abstract_model: config.bot4_abstract_model,
+    });
+
+    const entry = {
+      chapter: chapterNumber,
+      condensed,
+      abstract,
+      time: now(),
+    };
+
+    projectStore.summaries.push(entry);
+    if (projectStore.chapters[chapterNumber - 1]) {
+      projectStore.chapters[chapterNumber - 1].summary = condensed;
+    }
+
+    setDisplayMode?.(chapterNumber, 'abstract');
+    setActiveSmallSummaries?.([chapterNumber]);
+    await saveProject();
+    return entry;
+  } finally {
+    setGenerating?.(false);
+  }
+}
+
+export function getPendingBigSummaryBatch(projectStore) {
+  const lastBigTo = projectStore?.bigSummaries?.at?.(-1)?.toChapter || 0;
+  const summaries = Array.isArray(projectStore?.summaries)
+    ? projectStore.summaries.filter((item) => item.chapter > lastBigTo)
+    : [];
+
+  if (summaries.length === 0) {
+    return null;
+  }
+
+  const fromChapter = summaries[0].chapter;
+  const toChapter = summaries[summaries.length - 1].chapter;
+  const abstractCount = Math.max(1, Math.floor(summaries.length * 0.6));
+  const condensedCount = Math.max(0, summaries.length - abstractCount);
+
+  return {
+    summaries,
+    fromChapter,
+    toChapter,
+    abstractCount,
+    condensedCount,
+  };
+}
+
+export async function generateBigSummary(projectStore, config, options = {}) {
+  const {
+    now = nowString,
+    readSSEImpl = readSSE,
+    setGenerating,
+    setActiveTab,
+    saveProject = async () => projectStore.saveProject(),
+  } = options;
+
+  const batch = getPendingBigSummaryBatch(projectStore);
+  if (!batch) {
+    return false;
+  }
+
+  setGenerating?.(true);
+
+  try {
+    const content = await readSSEImpl('/api/bot4/big-summarize', {
+      summaries: batch.summaries,
+      config,
+      abstract_count: batch.abstractCount,
+      condensed_count: batch.condensedCount,
+    });
+
+    const entry = {
+      fromChapter: batch.fromChapter,
+      toChapter: batch.toChapter,
+      content,
+      time: now(),
+    };
+
+    projectStore.bigSummaries.push(entry);
+    setActiveTab?.('big');
+    await saveProject();
+    return entry;
+  } finally {
+    setGenerating?.(false);
+  }
+}
+
+export async function compressSummaryMemory(summary, config, options = {}) {
+  const {
+    readSSEImpl = readSSE,
+    maxChars = 800,
+  } = options;
+
+  const normalizedSummary = String(summary || '').trim();
+  if (!normalizedSummary) {
+    return '';
+  }
+
+  return readSSEImpl('/api/compress-summary', {
+    summary: normalizedSummary,
+    config,
+    max_chars: maxChars,
+  });
+}
+
+export async function runBot4Maintenance(projectStore, config, options = {}) {
+  const {
+    ensureCurrentSummaryOptions = {},
+    generateBigSummaryOptions = {},
+    bigSummaryThreshold = Number(config?.big_summary_threshold || 10),
+    compressSummaryOptions = {},
+    compressWhenBigSummaryGenerated = true,
+  } = options;
+
+  const summaryEntry = await ensureCurrentSummary(projectStore, config, ensureCurrentSummaryOptions);
+  if (!summaryEntry) {
+    return {
+      summaryEntry: null,
+      bigSummaryEntry: null,
+      compressedBigSummary: '',
+      generatedSummary: false,
+      generatedBigSummary: false,
+      compressedBigSummaryGenerated: false,
+    };
+  }
+
+  const pendingBatch = getPendingBigSummaryBatch(projectStore);
+  const shouldGenerateBigSummary = Boolean(
+    pendingBatch && pendingBatch.summaries.length >= Math.max(1, Number(bigSummaryThreshold) || 1),
+  );
+
+  let bigSummaryEntry = null;
+  let compressedBigSummary = '';
+  if (shouldGenerateBigSummary) {
+    bigSummaryEntry = await generateBigSummary(projectStore, config, generateBigSummaryOptions);
+    if (
+      compressWhenBigSummaryGenerated
+      && bigSummaryEntry?.content
+    ) {
+      compressedBigSummary = await compressSummaryMemory(
+        String(bigSummaryEntry.content || ''),
+        config,
+        compressSummaryOptions,
+      );
+      if (compressedBigSummary) {
+        bigSummaryEntry.content = compressedBigSummary;
+      }
+    }
+  }
+
+  return {
+    summaryEntry,
+    bigSummaryEntry,
+    compressedBigSummary,
+    generatedSummary: Boolean(summaryEntry),
+    generatedBigSummary: Boolean(bigSummaryEntry),
+    compressedBigSummaryGenerated: Boolean(compressedBigSummary),
   };
 }
 

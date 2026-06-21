@@ -7,8 +7,8 @@ import httpx
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
 
-from ..models import Bot1ChatRequest, OutlineChatRequest, FetchModelsRequest
-from ..prompts import BOT1_SYSTEM, BOT1_OUTLINE_SYSTEM
+from ..models import Bot1ChatRequest, OutlineChatRequest, Bot11ExtractRequest, FetchModelsRequest
+from ..prompts import BOT1_SYSTEM, BOT1_OUTLINE_SYSTEM, BOT1_1_SYSTEM
 from ..llm import stream_llm
 from ..workspace import require_workspace
 
@@ -106,6 +106,42 @@ Complete official-outline draft. If no changes needed, copy the current full out
 </outline>
 
 Do not output <chapter_outline>. Tag name must match exactly. The tag must be properly closed. No placeholders inside the tag."""
+
+
+def _build_bot11_extract_system(req: Bot11ExtractRequest) -> str:
+    parts = [BOT1_1_SYSTEM]
+
+    if req.current_outline and req.current_outline.strip():
+        parts.append(f"【Current Full Outline】\n{req.current_outline.strip()}")
+
+    if req.chapter_outline and req.chapter_outline.strip():
+        parts.append(f"【Current Chapter Outline】\n{req.chapter_outline.strip()}")
+
+    if req.context and req.context.strip():
+        parts.append(req.context.strip())
+
+    return "\n\n".join(parts)
+
+
+def _build_bot11_extract_messages(req: Bot11ExtractRequest) -> list[dict]:
+    messages = [{"role": "system", "content": _build_bot11_extract_system(req)}]
+
+    for message in req.messages or []:
+        if not isinstance(message, dict):
+            continue
+        role = str(message.get("role", "")).strip()
+        if role not in {"user", "assistant"}:
+            continue
+        content = str(message.get("content", "")).strip()
+        if not content:
+            continue
+        messages.append({"role": role, "content": content})
+
+    return messages
+
+
+def _normalize_planning_digest(text: str) -> str:
+    return str(text or "").strip()
 
 
 def _build_bot1_system(req: Bot1ChatRequest, mode: Literal["chapter", "outline"] = "chapter") -> str:
@@ -593,3 +629,16 @@ async def bot1_outline_chat(workspace: str, req: OutlineChatRequest):
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/bot1/extract-planning")
+async def bot11_extract_planning(workspace: str, req: Bot11ExtractRequest):
+    messages = _build_bot11_extract_messages(req)
+
+    try:
+        chunks: list[str] = []
+        async for chunk in stream_llm(req.config.bot1, messages):
+            chunks.append(chunk)
+        return {"planning_digest": _normalize_planning_digest("".join(chunks))}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)[:500]})

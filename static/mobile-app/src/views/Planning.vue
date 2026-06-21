@@ -112,7 +112,6 @@ import { showToast } from 'vant';
 
 import { useProjectStore } from '@/stores/project';
 import {
-  applyPlanningExtract,
   buildPlanningRequestContext,
   buildPlanningRequestPayload,
   buildPlanningRuntimeState,
@@ -120,6 +119,7 @@ import {
   getRuntimeConfig,
   incrementPlanningExtractCounters,
   readSSE,
+  requestPlanningExtract,
   restorePlanningRuntimeState,
   shouldTriggerPlanningExtract,
   stripOutline,
@@ -294,11 +294,15 @@ const shouldTriggerPlanningExtractLocal = (message) => (
   isNormalPlanningMode.value && shouldTriggerPlanningExtract(message, projectStore)
 );
 
-const applyPlanningExtractLocal = (latestUserInput = '') => {
+const runPlanningExtract = async (config, latestUserInput = '') => {
   if (!isNormalPlanningMode.value) {
-    return;
+    return false;
   }
-  applyPlanningExtract(projectStore, latestUserInput);
+  if (!String(projectStore.chapterOutline || '').trim()) {
+    return false;
+  }
+  await requestPlanningExtract(projectStore, config, latestUserInput);
+  return true;
 };
 
 const sendMessage = async () => {
@@ -363,7 +367,11 @@ const sendMessage = async () => {
     assistantMessage.content = fullText;
     syncOutlines(fullText, message);
     if (shouldTriggerPlanningExtractLocal(message)) {
-      applyPlanningExtractLocal(message);
+      try {
+        await runPlanningExtract(config, message);
+      } catch (extractError) {
+        showToast(extractError.message || 'Bot1_1 提炼失败');
+      }
     }
     await projectStore.saveProject();
   } catch (error) {

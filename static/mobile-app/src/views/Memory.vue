@@ -100,9 +100,13 @@ import { showConfirmDialog, showToast } from 'vant';
 
 import { useProjectStore } from '@/stores/project';
 import {
+  ensureCurrentSummary as ensureCurrentSummaryTask,
+  generateBigSummary as generateBigSummaryTask,
+  getPendingBigSummaryBatch,
   getRuntimeConfig,
   nowString,
   readSSE,
+  runBot4Maintenance,
   stringifySummaryContentForDisplay,
 } from '@/lib/workflow';
 
@@ -154,51 +158,31 @@ const ensureCurrentSummary = async () => {
     return false;
   }
 
-  const chapterNumber = projectStore.summaries.length + 1;
-  isGeneratingSmall.value = true;
-  activeTab.value = 'small';
-
   try {
-    const condensed = await readSSE('/api/bot4/summarize', {
-      content: chapter.content,
-      outline: chapter.chapter_outline || chapter.outline || projectStore.chapterOutline || projectStore.currentOutline,
-      config,
+    const entry = await ensureCurrentSummaryTask(projectStore, config, {
+      now: nowString,
+      readSSEImpl: readSSE,
+      setGenerating: (value) => {
+        isGeneratingSmall.value = value;
+      },
+      setActiveTab: (value) => {
+        activeTab.value = value;
+      },
+      setDisplayMode,
+      setActiveSmallSummaries: (value) => {
+        activeSmallSummaries.value = value;
+      },
     });
-
-    const abstract = await readSSE('/api/bot4/abstract', {
-      condensed,
-      content: chapter.content,
-      config,
-      abstract_model: config.bot4_abstract_model,
-    });
-
-    const entry = {
-      chapter: chapterNumber,
-      condensed,
-      abstract,
-      time: nowString(),
-    };
-
-    projectStore.summaries.push(entry);
-    if (projectStore.chapters[chapterNumber - 1]) {
-      projectStore.chapters[chapterNumber - 1].summary = condensed;
-    }
-    setDisplayMode(chapterNumber, 'abstract');
-    activeSmallSummaries.value = [chapterNumber];
-    await projectStore.saveProject();
-    return true;
+    return Boolean(entry);
   } catch (error) {
     showToast(error.message || '章节总结生成失败');
     return false;
-  } finally {
-    isGeneratingSmall.value = false;
   }
 };
 
 const generateBigSummary = () => {
-  const lastBigTo = projectStore.bigSummaries.at(-1)?.toChapter || 0;
-  const pendingSummaries = projectStore.summaries.filter((item) => item.chapter > lastBigTo);
-  if (pendingSummaries.length === 0 || isGeneratingBig.value) {
+  const batch = getPendingBigSummaryBatch(projectStore);
+  if (!batch || isGeneratingBig.value) {
     showToast('没有可生成的大总结内容');
     return;
   }
@@ -209,38 +193,28 @@ const generateBigSummary = () => {
     return;
   }
 
-  const fromChapter = pendingSummaries[0].chapter;
-  const toChapter = pendingSummaries[pendingSummaries.length - 1].chapter;
-  const abstractCount = Math.max(1, Math.floor(pendingSummaries.length * 0.6));
-  const condensedCount = Math.max(0, pendingSummaries.length - abstractCount);
-
   showConfirmDialog({
     title: '生成大总结',
-    message: `将整合第 ${fromChapter} - ${toChapter} 章的记忆内容，确定继续吗？`,
+    message: `将整合第 ${batch.fromChapter} - ${batch.toChapter} 章的记忆内容，确定继续吗？`,
   })
     .then(async () => {
-      isGeneratingBig.value = true;
       try {
-        const content = await readSSE('/api/bot4/big-summarize', {
-          summaries: pendingSummaries,
-          config,
-          abstract_count: abstractCount,
-          condensed_count: condensedCount,
+        const entry = await generateBigSummaryTask(projectStore, config, {
+          now: nowString,
+          readSSEImpl: readSSE,
+          setGenerating: (value) => {
+            isGeneratingBig.value = value;
+          },
+          setActiveTab: (value) => {
+            activeTab.value = value;
+          },
         });
 
-        projectStore.bigSummaries.push({
-          fromChapter,
-          toChapter,
-          content,
-          time: nowString(),
-        });
-        activeTab.value = 'big';
-        await projectStore.saveProject();
-        showToast('大总结生成完成');
+        if (entry) {
+          showToast('大总结生成完成');
+        }
       } catch (error) {
         showToast(error.message || '大总结生成失败');
-      } finally {
-        isGeneratingBig.value = false;
       }
     })
     .catch(() => {});
@@ -256,17 +230,22 @@ const startNextChapter = async () => {
     return;
   }
 
-  // 准备一条引导消息预填到 Planning 输入框 —— 让 Bot1 主动用 Bot4 写入上下文的小总结，
-  // 回顾本章 + 给出下一章方案。Planning.vue 会监听 projectStore.pendingPlanningPrompt 消费。
-  const completedChapter = projectStore.chapters.length > 0
-    ? projectStore.chapters.length
-    : (projectStore.summaries.at?.(-1)?.chapter || 0);
+  const latestSummary = projectStore.summaries.at?.(-1) || null;
+  const latestBigSummary = projectStore.bigSummaries.at?.(-1) || null;
+  const completedChapter = latestSummary?.chapter
+    || (projectStore.chapters.length > 0 ? projectStore.chapters.length : 0);
+
   if (completedChapter > 0) {
     const next = completedChapter + 1;
-    projectStore.pendingPlanningPrompt = `第${completedChapter}章已完成（小总结见上下文【各章摘要】）。请你：\n`
-      + `1. 用一段话回顾本章关键剧情和未回收的伏笔\n`
-      + `2. 给出第${next}章的 2-3 个走向方案，让我挑选/调整\n`
-      + `3. 顺带说一下是否需要微调总大纲`;
+    const hasFreshBigSummary = latestBigSummary && Number(latestBigSummary.toChapter || 0) >= completedChapter;
+    const memoryHint = hasFreshBigSummary
+      ? '本章小总结与阶段大总结都已写入上下文记忆。'
+      : '本章小总结已写入上下文记忆。';
+
+    projectStore.pendingPlanningPrompt = `第${completedChapter}章已完成，${memoryHint}请你：\n`
+      + `1. 先用一段话回顾上一章真正留下的推进结果，而不是重复表面剧情\n`
+      + `2. 基于当前记忆，给出第${next}章的 2-3 个可执行走向方案，让我挑选/调整\n`
+      + `3. 如果近期规划已经成形，就顺手更新当前章节大纲；如果没有，再明确还差哪个决策点`;
   }
 
   projectStore.currentContent = '';
@@ -277,6 +256,56 @@ const startNextChapter = async () => {
 
 defineExpose({
   ensureCurrentSummary,
+  runAutoMaintenance: async () => {
+    if (isGeneratingSmall.value || isGeneratingBig.value) {
+      return false;
+    }
+
+    const config = getRuntimeConfig(projectStore.config);
+    if (!config) {
+      showToast('请先在设置页填写 Bot4 配置');
+      return false;
+    }
+
+    try {
+      const result = await runBot4Maintenance(projectStore, config, {
+        bigSummaryThreshold: config.big_summary_threshold,
+        compressWhenBigSummaryGenerated: true,
+        compressSummaryOptions: {
+          readSSEImpl: readSSE,
+          maxChars: 800,
+        },
+        ensureCurrentSummaryOptions: {
+          now: nowString,
+          readSSEImpl: readSSE,
+          setGenerating: (value) => {
+            isGeneratingSmall.value = value;
+          },
+          setActiveTab: (value) => {
+            activeTab.value = value;
+          },
+          setDisplayMode,
+          setActiveSmallSummaries: (value) => {
+            activeSmallSummaries.value = value;
+          },
+        },
+        generateBigSummaryOptions: {
+          now: nowString,
+          readSSEImpl: readSSE,
+          setGenerating: (value) => {
+            isGeneratingBig.value = value;
+          },
+          setActiveTab: (value) => {
+            activeTab.value = value;
+          },
+        },
+      });
+      return result;
+    } catch (error) {
+      showToast(error.message || 'Bot4 自动维护失败');
+      return false;
+    }
+  },
 });
 </script>
 

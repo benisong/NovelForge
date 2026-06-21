@@ -41,6 +41,14 @@ class OutlineChatRequest(BaseModel):
     context: Optional[str] = ""
 
 
+class Bot11ExtractRequest(BaseModel):
+    messages: list[dict]
+    config: ProjectConfig
+    current_outline: Optional[str] = ""
+    chapter_outline: Optional[str] = ""
+    context: Optional[str] = ""
+
+
 class Bot2WriteRequest(BaseModel):
     outline: str
     chapter_outline: Optional[str] = ""

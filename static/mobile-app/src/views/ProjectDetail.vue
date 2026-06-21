@@ -291,6 +291,7 @@ const handleRewrite = async (data) => {
 const handleApprove = async () => {
   await ensureCurrentChapterSaved();
   projectStore.lastRewriteSuggestions = '';
+  await memoryViewRef.value?.runAutoMaintenance?.();
   await goToCard(3);
 };
 
