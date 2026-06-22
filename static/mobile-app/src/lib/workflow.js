@@ -786,12 +786,21 @@ export function formatSuggestionsText(reviewLike, passScore = 8) {
     return reviewLike.trim();
   }
 
+  const forceFullRewrite = Boolean(reviewLike?.force_full_rewrite);
   const userSuggestions = String(reviewLike?.user_suggestions || '').trim();
   const items = normalizeReviewItems(reviewLike?.items ?? reviewLike);
   const rewriteBrief = buildRewriteBrief(reviewLike, passScore);
   const parts = [];
   if (userSuggestions) {
     parts.push(`【用户补充建议（最高优先级）】\n${userSuggestions}`);
+  }
+
+  if (forceFullRewrite) {
+    parts.push('【整章重写要求】\n请基于当前章节目标整章重写，不沿用旧稿句级修补思路。')
+    if (rewriteBrief) {
+      parts.push(`【Bot3重写指令】\n${rewriteBrief}`);
+    }
+    return parts.join('\n\n').trim();
   }
 
   if (items.length === 0) {
@@ -815,6 +824,121 @@ export function formatSuggestionsText(reviewLike, passScore = 8) {
 
   parts.push(`【Bot3重写指令】\n${rewriteBrief}\n\n【逐条修改建议】\n${detailText}`);
   return parts.join('\n\n').trim();
+}
+
+export function getBot2FreedomPolicy(rewriteAttempt = 0) {
+  const normalized = Number(rewriteAttempt || 0);
+  if (normalized <= 0) {
+    return 'high';
+  }
+  if (normalized === 1) {
+    return 'medium';
+  }
+  return 'low';
+}
+
+export function buildBot2RewritePacket(reviewLike, options = {}) {
+  const {
+    rewriteAttempt = 1,
+    selfReviewText = '',
+    reuseSystemSuggestions = true,
+    passScore = 8,
+  } = options;
+  const userInstruction = String(selfReviewText || '').trim();
+  const hasSelfReview = Boolean(userInstruction);
+  const defaultFreedomPolicy = getBot2FreedomPolicy(rewriteAttempt);
+  const systemReviewBrief = buildRewriteBrief(reviewLike, passScore);
+  const forceFullRewrite = Boolean(reviewLike?.force_full_rewrite);
+
+  if (!hasSelfReview) {
+    return {
+      rewrite_mode: forceFullRewrite ? 'full_rewrite' : 'system',
+      user_review_instruction: '',
+      system_review_brief: systemReviewBrief,
+      instruction_priority: 'system_only',
+      freedom_policy: forceFullRewrite ? 'high' : defaultFreedomPolicy,
+      force_full_rewrite: forceFullRewrite,
+    };
+  }
+
+  if (reuseSystemSuggestions) {
+    return {
+      rewrite_mode: forceFullRewrite ? 'full_rewrite_hybrid' : 'hybrid',
+      user_review_instruction: userInstruction,
+      system_review_brief: systemReviewBrief,
+      instruction_priority: 'user_over_system',
+      freedom_policy: forceFullRewrite ? 'high' : defaultFreedomPolicy,
+      force_full_rewrite: forceFullRewrite,
+    };
+  }
+
+  return {
+    rewrite_mode: 'custom',
+    user_review_instruction: userInstruction,
+    system_review_brief: '',
+    instruction_priority: 'user_over_system',
+    freedom_policy: 'bypass',
+    force_full_rewrite: forceFullRewrite,
+  };
+}
+
+export function describeBot2RewritePacket(packet) {
+  if (!packet || typeof packet !== 'object') {
+    return null;
+  }
+
+  const rewriteMode = String(packet.rewrite_mode || 'system').trim() || 'system';
+  const freedomPolicy = String(packet.freedom_policy || 'medium').trim() || 'medium';
+  const instructionPriority = String(packet.instruction_priority || 'system_only').trim() || 'system_only';
+  const hasUserInstruction = Boolean(String(packet.user_review_instruction || '').trim());
+  const hasSystemBrief = Boolean(String(packet.system_review_brief || '').trim());
+
+  const modeLabel = {
+    system: '系统审稿驱动',
+    hybrid: '用户主导 + 系统 brief',
+    custom: '完全用户自定义',
+    full_rewrite: '系统驱动整章重写',
+    full_rewrite_hybrid: '用户主导整章重写',
+  }[rewriteMode] || rewriteMode;
+
+  const freedomLabel = {
+    high: '高自由度',
+    medium: '中自由度',
+    low: '低自由度',
+    bypass: '旁路默认自由度',
+  }[freedomPolicy] || freedomPolicy;
+
+  const priorityLabel = {
+    system_only: '系统建议主导',
+    user_over_system: '用户建议优先',
+  }[instructionPriority] || instructionPriority;
+
+  const modeHint = {
+    system: '按 Bot3 / 系统审稿结果定点修补。',
+    hybrid: '用户意图优先，系统建议只保留总体 brief。',
+    custom: '只执行你的自定义改写目标，不再复用系统建议。',
+    full_rewrite: '这一轮将整章重写，不再按旧稿问题点局部修补。',
+    full_rewrite_hybrid: '这一轮将按你的意图主导整章重写，系统 brief 只提供方向。',
+  }[rewriteMode] || '按当前 packet 执行改写。';
+
+  const targetTypeLabel = rewriteMode.includes('full_rewrite')
+    ? '整章重写'
+    : '局部修补';
+
+  return {
+    modeLabel,
+    freedomLabel,
+    priorityLabel,
+    targetTypeLabel,
+    modeHint,
+    hasUserInstruction,
+    hasSystemBrief,
+    raw: {
+      rewrite_mode: rewriteMode,
+      freedom_policy: freedomPolicy,
+      instruction_priority: instructionPriority,
+    },
+  };
 }
 
 export function nowString() {

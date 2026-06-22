@@ -172,6 +172,9 @@ export const useProjectStore = defineStore('project', () => {
   const bigSummaries = ref([]);
   const chapters = ref([]);
   const lastRewriteSuggestions = ref('');
+  const lastRewritePacket = ref(null);
+  const selfReviewText = ref('');
+  const reuseSystemSuggestions = ref(true);
 
   // 仅当前会话有效（不持久化）：跨视图传递一次性预填消息。
   // Memory.vue 点"进入下一章规划"时写入；Planning.vue 监听到非空就填入输入框并清空。
@@ -201,6 +204,9 @@ export const useProjectStore = defineStore('project', () => {
     bigSummaries.value = [];
     chapters.value = [];
     lastRewriteSuggestions.value = '';
+    lastRewritePacket.value = null;
+    selfReviewText.value = '';
+    reuseSystemSuggestions.value = true;
     pendingPlanningPrompt.value = '';
     selectedStyleId.value = defaultStyleId.value;
     wordCount.value = defaultWordCount.value;
@@ -363,6 +369,9 @@ export const useProjectStore = defineStore('project', () => {
       summaries.value = data.small_summaries || [];
       bigSummaries.value = data.big_summaries || [];
       lastRewriteSuggestions.value = data.last_rewrite_suggestions || '';
+      lastRewritePacket.value = data.last_rewrite_packet || null;
+      selfReviewText.value = data.self_review_text || '';
+      reuseSystemSuggestions.value = data.reuse_system_suggestions !== false;
       localStorage.setItem('nf_last_project', projectId.value);
       return true;
     } catch (error) {
@@ -408,6 +417,9 @@ export const useProjectStore = defineStore('project', () => {
       small_summaries: summaries.value,
       big_summaries: bigSummaries.value,
       last_rewrite_suggestions: lastRewriteSuggestions.value,
+      last_rewrite_packet: lastRewritePacket.value,
+      self_review_text: selfReviewText.value,
+      reuse_system_suggestions: reuseSystemSuggestions.value,
       logs: [],
       active_tab: 'bot1',
     };
@@ -455,6 +467,9 @@ export const useProjectStore = defineStore('project', () => {
     bigSummaries,
     chapters,
     lastRewriteSuggestions,
+    lastRewritePacket,
+    selfReviewText,
+    reuseSystemSuggestions,
     pendingPlanningPrompt,
     setConfig,
     createConfigDraft,

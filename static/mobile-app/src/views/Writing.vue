@@ -67,6 +67,7 @@ import { showToast } from 'vant';
 import { useProjectStore } from '@/stores/project';
 import {
   buildBot2Context,
+  buildBot2RewritePacket,
   formatSuggestionsText,
   getPreviousEnding,
   getRuntimeConfig,
@@ -163,6 +164,14 @@ const startGenerating = async (suggestions = []) => {
   }
   const isRewrite = Boolean(suggestionsText);
   const previousContent = String(projectStore.currentContent || '');
+  const rewritePacket = isRewrite
+    ? buildBot2RewritePacket(suggestions, {
+        rewriteAttempt: projectStore.lastRewriteSuggestions ? 2 : 1,
+        selfReviewText: projectStore.selfReviewText,
+        reuseSystemSuggestions: projectStore.reuseSystemSuggestions,
+        passScore: passScoreForFormat,
+      })
+    : null;
 
   projectStore.currentContent = '';
   isGenerating.value = true;
@@ -181,6 +190,7 @@ const startGenerating = async (suggestions = []) => {
         tips: '',
         prev_ending: getPreviousEnding(projectStore),
         bot2_context: buildBot2Context(projectStore),
+        rewrite_packet: rewritePacket,
       }
     : {
         outline: projectStore.currentOutline,
@@ -208,6 +218,11 @@ const startGenerating = async (suggestions = []) => {
 
     projectStore.currentContent = fullText;
     projectStore.lastRewriteSuggestions = isRewrite ? suggestionsText : '';
+    projectStore.lastRewritePacket = isRewrite ? rewritePacket : null;
+    if (!isRewrite) {
+      projectStore.selfReviewText = '';
+      projectStore.reuseSystemSuggestions = true;
+    }
     await projectStore.saveProject();
   } catch (error) {
     if (!projectStore.currentContent && previousContent) {

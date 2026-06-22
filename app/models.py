@@ -71,6 +71,7 @@ class Bot2RewriteRequest(BaseModel):
     tips: Optional[str] = ""
     prev_ending: Optional[str] = ""
     bot2_context: Optional[str] = ""   # 大总结+condensed
+    rewrite_packet: Optional[dict] = None
 
 
 class Bot3ReviewRequest(BaseModel):
@@ -154,6 +155,9 @@ class SaveProjectRequest(BaseModel):
     active_tab: str = ""
     accumulated_tips: list[str] = []
     last_rewrite_suggestions: str = ""
+    last_rewrite_packet: Optional[dict] = None
+    self_review_text: str = ""
+    reuse_system_suggestions: bool = True
     small_summaries: list[dict] = []   # [{chapter, condensed, abstract, time}]
     big_summaries: list[dict] = []     # [{fromChapter, toChapter, content, time}]
     # 章节边界标记：chat_history 中的下标，<= 此值的消息属于已完成章节，

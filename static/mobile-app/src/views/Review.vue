@@ -59,6 +59,58 @@
         />
       </div>
 
+      <div class="suggestions-card self-review-card">
+        <div class="section-head self-review-head">
+          <h3 class="section-title">我自己审</h3>
+          <van-switch v-model="selfReviewEnabled" size="20" />
+        </div>
+        <div v-if="selfReviewEnabled" class="self-review-body">
+          <van-field
+            v-model="selfReviewText"
+            rows="4"
+            autosize
+            type="textarea"
+            class="user-suggestion-field"
+            placeholder="直接写给 Bot2：这一轮你希望怎么改、哪些必须保留、哪些绝对不要动。"
+          />
+          <div class="self-review-reuse-row">
+            <span class="self-review-reuse-label">复用系统建议</span>
+            <van-switch v-model="reuseSystemSuggestions" size="20" />
+          </div>
+          <div class="self-review-hint">
+            {{ reuseSystemSuggestions
+              ? '当前模式：用户建议最高优先级，系统建议只作为补充 brief。'
+              : '当前模式：完全按你的审稿意见改写，不复用系统建议。'
+            }}
+          </div>
+        </div>
+      </div>
+
+      <div class="suggestions-card strategy-summary-card" v-if="pendingRewriteStrategy">
+        <h3 class="section-title">本轮改写策略</h3>
+        <div class="strategy-chip-row">
+          <van-tag type="primary" plain round>{{ pendingRewriteStrategy.modeLabel }}</van-tag>
+          <van-tag type="danger" plain round>{{ pendingRewriteStrategy.targetTypeLabel }}</van-tag>
+          <van-tag type="warning" plain round>{{ pendingRewriteStrategy.freedomLabel }}</van-tag>
+          <van-tag type="success" plain round>{{ pendingRewriteStrategy.priorityLabel }}</van-tag>
+        </div>
+        <div class="strategy-summary-text">{{ pendingRewriteStrategy.modeHint }}</div>
+        <div class="strategy-meta-list">
+          <div class="strategy-meta-item">
+            <span class="strategy-meta-label">目标类型</span>
+            <span class="strategy-meta-value">{{ pendingRewriteStrategy.targetTypeLabel }}</span>
+          </div>
+          <div class="strategy-meta-item">
+            <span class="strategy-meta-label">用户自审</span>
+            <span class="strategy-meta-value">{{ pendingRewriteStrategy.hasUserInstruction ? '已启用' : '未启用' }}</span>
+          </div>
+          <div class="strategy-meta-item">
+            <span class="strategy-meta-label">系统 brief</span>
+            <span class="strategy-meta-value">{{ pendingRewriteStrategy.hasSystemBrief ? '参与本轮' : '不参与本轮' }}</span>
+          </div>
+        </div>
+      </div>
+
       <div class="suggestions-card" v-if="suggestions.length > 0">
         <h3 class="section-title">修改建议</h3>
         <van-collapse v-model="activeNames" accordion>
@@ -181,7 +233,13 @@ import { computed, onMounted, ref } from 'vue';
 import { showConfirmDialog, showToast } from 'vant';
 
 import { apiUrl, loginUrl } from '@/api/url';
-import { buildRewriteBrief, getRuntimeConfig, nowString } from '@/lib/workflow';
+import {
+  buildBot2RewritePacket,
+  buildRewriteBrief,
+  describeBot2RewritePacket,
+  getRuntimeConfig,
+  nowString,
+} from '@/lib/workflow';
 import { useProjectStore } from '@/stores/project';
 
 const emit = defineEmits(['rewrite', 'approve']);
@@ -211,6 +269,9 @@ const suggestions = ref([]);
 const reviewAnalysis = ref('');
 const rewriteBrief = ref('');
 const userSuggestions = ref('');
+const selfReviewEnabled = ref(false);
+const selfReviewText = ref('');
+const reuseSystemSuggestions = ref(true);
 const activeNames = ref('');
 const showEditDialog = ref(false);
 const editingForm = ref({ dim: '', index: -1, problem: '', suggestion: '' });
@@ -262,10 +323,19 @@ const reviewDraft = computed(() => ({
   analysis: reviewAnalysis.value,
   rewrite_brief: rewriteBrief.value,
   user_suggestions: userSuggestions.value,
+  self_review_text: selfReviewEnabled.value ? selfReviewText.value.trim() : '',
+  reuse_system_suggestions: reuseSystemSuggestions.value,
   items: suggestions.value,
 }));
 
 const effectiveRewriteBrief = computed(() => buildRewriteBrief(reviewDraft.value, passScore.value));
+const pendingRewritePacket = computed(() => buildBot2RewritePacket(reviewDraft.value, {
+  rewriteAttempt: projectStore.lastRewriteSuggestions ? 2 : 1,
+  selfReviewText: selfReviewEnabled.value ? selfReviewText.value.trim() : '',
+  reuseSystemSuggestions: reuseSystemSuggestions.value,
+  passScore: passScore.value,
+}));
+const pendingRewriteStrategy = computed(() => describeBot2RewritePacket(pendingRewritePacket.value));
 
 const getReviewSignature = (content, styleId = currentStyleId.value) =>
   `${String(styleId || '').trim()}::${String(content || '').trim()}`;
@@ -302,6 +372,9 @@ const applyReview = (review) => {
   if (Object.prototype.hasOwnProperty.call(review, 'user_suggestions')) {
     userSuggestions.value = String(review.user_suggestions || '').trim();
   }
+  selfReviewText.value = String(review.self_review_text || '').trim();
+  selfReviewEnabled.value = Boolean(selfReviewText.value);
+  reuseSystemSuggestions.value = review.reuse_system_suggestions !== false;
   activeNames.value = suggestions.value[0]?.dim || '';
   rawPreview.value = String(review._raw_preview || '').trim();
   retryHint.value = Boolean(review.retry_hint);
@@ -319,6 +392,9 @@ const persistReview = () => {
       analysis: reviewAnalysis.value,
       rewrite_brief: effectiveRewriteBrief.value,
       user_suggestions: userSuggestions.value.trim(),
+      self_review_text: selfReviewEnabled.value ? selfReviewText.value.trim() : '',
+      reuse_system_suggestions: reuseSystemSuggestions.value,
+      rewrite_packet: projectStore.lastRewritePacket || null,
       items: suggestions.value,
       _raw_preview: rawPreview.value,
       retry_hint: retryHint.value,
@@ -458,8 +534,24 @@ const saveSuggestion = () => {
 
 const handleRewrite = (type) => {
   const message = type === 'all'
-    ? '确定要整章重写吗？'
+    ? '确定要整章重写吗？这次会走“整章重写”策略，而不是局部修补。'
     : '将按当前审核建议重新生成正文，确定继续吗？';
+
+  projectStore.selfReviewText = selfReviewEnabled.value ? selfReviewText.value.trim() : '';
+  projectStore.reuseSystemSuggestions = reuseSystemSuggestions.value;
+
+  const rewritePayload = type === 'suggested'
+    ? {
+        ...reviewDraft.value,
+        rewrite_brief: effectiveRewriteBrief.value,
+        user_suggestions: userSuggestions.value.trim(),
+      }
+    : {
+        ...reviewDraft.value,
+        rewrite_brief: effectiveRewriteBrief.value,
+        user_suggestions: userSuggestions.value.trim(),
+        force_full_rewrite: true,
+      };
 
   showConfirmDialog({
     title: '确认重写',
@@ -469,13 +561,7 @@ const handleRewrite = (type) => {
       persistReview();
       emit('rewrite', {
         type,
-        suggestions: type === 'suggested'
-          ? {
-              ...reviewDraft.value,
-              rewrite_brief: effectiveRewriteBrief.value,
-              user_suggestions: userSuggestions.value.trim(),
-            }
-          : [],
+        suggestions: rewritePayload,
       });
     })
     .catch(() => {});
@@ -483,6 +569,8 @@ const handleRewrite = (type) => {
 
 const handleApprove = async () => {
   persistReview();
+  projectStore.selfReviewText = selfReviewEnabled.value ? selfReviewText.value.trim() : '';
+  projectStore.reuseSystemSuggestions = reuseSystemSuggestions.value;
   await projectStore.saveProject();
   showToast('章节审核通过');
   emit('approve');
@@ -494,6 +582,10 @@ onMounted(() => {
   if (latest?.review) {
     applyReview(latest.review);
     lastReviewedSignature.value = reviewSignature;
+  } else {
+    selfReviewText.value = String(projectStore.selfReviewText || '').trim();
+    selfReviewEnabled.value = Boolean(selfReviewText.value);
+    reuseSystemSuggestions.value = projectStore.reuseSystemSuggestions !== false;
   }
 });
 
@@ -636,6 +728,83 @@ defineExpose({
   background: #fffaf0;
   border: 1px solid #ffe3ac;
   border-radius: 8px;
+}
+
+.self-review-card {
+  border: 1px solid #dbeafe;
+}
+
+.self-review-head {
+  margin-bottom: 0;
+}
+
+.self-review-body {
+  margin-top: 16px;
+}
+
+.self-review-reuse-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.self-review-reuse-label {
+  color: #323233;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.self-review-hint {
+  margin-top: 10px;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.strategy-summary-card {
+  border: 1px solid #d1fae5;
+  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%);
+}
+
+.strategy-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.strategy-summary-text {
+  color: #166534;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.strategy-meta-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.strategy-meta-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 8px;
+  border-top: 1px dashed #bbf7d0;
+}
+
+.strategy-meta-label {
+  color: #166534;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.strategy-meta-value {
+  color: #065f46;
+  font-size: 13px;
 }
 
 .suggestion-item {
