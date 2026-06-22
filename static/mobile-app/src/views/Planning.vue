@@ -26,43 +26,46 @@
     </div>
 
     <div class="chat-area" ref="chatAreaRef">
-      <div v-if="isOutlineWorkspaceMode" class="outline-draft-panel">
-        <div class="outline-draft-header">
-          <span class="outline-draft-title">当前总纲草稿</span>
-          <span class="outline-draft-status">{{ outlineDraftStatus }}</span>
-        </div>
-        <div v-if="isOutlineReviseMode" class="revise-diff-summary" :class="isDraftSameAsOfficial ? 'revise-diff-pristine' : 'revise-diff-changed'">
-          <div class="revise-diff-summary-title">修正状态</div>
-          <div class="revise-diff-summary-body">
-            {{ isDraftSameAsOfficial
-              ? '你现在看到的草稿仍然等于正式总纲基线，还没有形成新的修正版本。'
-              : '当前草稿已经偏离正式总纲基线，提交后将用这份新版本覆盖正式总纲。'
-            }}
+      <div v-if="isOutlineWorkspaceMode" class="outline-workspace-shell">
+        <div class="outline-draft-panel">
+          <div class="outline-draft-header">
+            <span class="outline-draft-title">当前总纲草稿</span>
+            <span class="outline-draft-status">{{ outlineDraftStatus }}</span>
           </div>
-        </div>
-        <div v-if="isOutlineReviseMode" class="outline-baseline-panel">
-          <div class="outline-baseline-title">正式总纲基线</div>
-          <div class="outline-baseline-content">{{ officialOutlinePreview }}</div>
-        </div>
-        <div v-if="outlineDraftHint" class="outline-draft-hint">{{ outlineDraftHint }}</div>
-        <div class="outline-draft-content">{{ outlineDraftPreview }}</div>
-        <div class="outline-draft-actions">
-          <van-button
-            size="small"
-            plain
-            :disabled="isGenerating || !canDiscardOutlineDraft"
-            @click="discardOutlineDraft"
-          >
-            放弃草稿
-          </van-button>
-          <van-button
-            size="small"
-            type="primary"
-            :disabled="isGenerating || !canSubmitOutlineDraft"
-            @click="submitOutlineDraft"
-          >
-            提交总纲
-          </van-button>
+          <div v-if="isOutlineReviseMode" class="revise-diff-summary" :class="isDraftSameAsOfficial ? 'revise-diff-pristine' : 'revise-diff-changed'">
+            <div class="revise-diff-summary-title">修正状态</div>
+            <div class="revise-diff-summary-body">
+              {{ isDraftSameAsOfficial
+                ? '你现在看到的草稿仍然等于正式总纲基线，还没有形成新的修正版本。'
+                : '当前草稿已经偏离正式总纲基线，提交后将用这份新版本覆盖正式总纲。'
+              }}
+            </div>
+          </div>
+          <div v-if="isOutlineReviseMode" class="outline-baseline-panel">
+            <div class="outline-baseline-title">正式总纲基线</div>
+            <div class="outline-baseline-content">{{ officialOutlinePreview }}</div>
+          </div>
+          <div v-if="outlineDraftHint" class="outline-draft-hint">{{ outlineDraftHint }}</div>
+          <div class="outline-draft-content">{{ outlineDraftPreview }}</div>
+          <div class="outline-draft-actions">
+            <van-button
+              size="small"
+              plain
+              :disabled="isGenerating || !canDiscardOutlineDraft"
+              @click="discardOutlineDraft"
+            >
+              放弃草稿
+            </van-button>
+            <van-button
+              class="outline-submit-btn"
+              size="small"
+              type="primary"
+              :disabled="isGenerating || !canSubmitOutlineDraft"
+              @click="submitOutlineDraft"
+            >
+              提交总纲
+            </van-button>
+          </div>
         </div>
       </div>
 
@@ -385,6 +388,10 @@ const sendMessage = async () => {
 };
 
 const submitOutlineDraft = async () => {
+  console.log('submitOutlineDraft fired', {
+    outlineMode: projectStore.outlineMode,
+    hasDraft: Boolean(String(projectStore.outlineDraft || '').trim()),
+  });
   if (!canSubmitOutlineDraft.value) {
     showToast('请先生成总纲草稿，再提交');
     return;
@@ -393,7 +400,7 @@ const submitOutlineDraft = async () => {
   projectStore.currentOutline = String(projectStore.outlineDraft || '').trim();
   clearOutlineWorkspaceState(projectStore, { keepOfficialOutline: true });
   await projectStore.saveProject();
-  showToast('正式总纲已更新');
+  showToast('正式总纲已更新，请继续与 Bot1 讨论当前章节大纲');
 };
 
 const discardOutlineDraft = async () => {
@@ -421,7 +428,11 @@ const confirmOutlineAndNext = async () => {
   emit('next');
 };
 
-onMounted(scrollToBottom);
+onMounted(async () => {
+  if (!isOutlineWorkspaceMode.value) {
+    await scrollToBottom();
+  }
+});
 </script>
 
 <style scoped>
@@ -493,15 +504,18 @@ onMounted(scrollToBottom);
 
 .chat-area {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
   padding: 16px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
 
+.outline-workspace-shell {
+  margin-bottom: 16px;
+}
+
 .outline-draft-panel {
+  display: flex;
+  flex-direction: column;
   padding: 14px 16px;
   border-radius: 16px;
   background: #ffffff;
@@ -609,6 +623,7 @@ onMounted(scrollToBottom);
 
 .chat-bubble {
   max-width: 85%;
+  margin-top: 16px;
   padding: 12px 16px;
   border-radius: 12px;
   font-size: 15px;

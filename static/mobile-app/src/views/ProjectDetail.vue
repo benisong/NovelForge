@@ -60,30 +60,23 @@
         <van-icon name="arrow" size="24" color="#fff" />
       </div>
 
-      <van-swipe
-        ref="swipeRef"
-        class="main-swipe"
-        :loop="false"
-        :show-indicators="false"
-        :touchable="false"
-        @change="onSwipeChange"
-      >
-        <van-swipe-item class="swipe-item">
+      <div ref="swipeRef" class="main-swipe static-cards-shell">
+        <div v-show="currentCardIndex === 0" class="swipe-item">
           <PlanningView @next="goNextCard" @show-outline="openOutlineFromPlanning" />
-        </van-swipe-item>
+        </div>
 
-        <van-swipe-item class="swipe-item">
+        <div v-show="currentCardIndex === 1" class="swipe-item">
           <WritingView ref="writingViewRef" @prev="goPrevCard" @next="goNextCard" />
-        </van-swipe-item>
+        </div>
 
-        <van-swipe-item class="swipe-item">
+        <div v-show="currentCardIndex === 2" class="swipe-item">
           <ReviewView ref="reviewViewRef" @rewrite="handleRewrite" @approve="handleApprove" />
-        </van-swipe-item>
+        </div>
 
-        <van-swipe-item class="swipe-item">
+        <div v-show="currentCardIndex === 3" class="swipe-item">
           <MemoryView ref="memoryViewRef" @start-next="startNextChapter" @back-home="backToHome" />
-        </van-swipe-item>
-      </van-swipe>
+        </div>
+      </div>
 
       <van-action-sheet v-model:show="showOutline" title="大纲参考">
         <div class="outline-content">
@@ -212,7 +205,9 @@ onMounted(async () => {
   if (shouldStayOnPlanningCard.value) {
     currentCardIndex.value = 0;
     await nextTick();
-    swipeRef.value?.swipeTo?.(0);
+    if (typeof swipeRef.value?.swipeTo === 'function') {
+      swipeRef.value.swipeTo(0);
+    }
   }
 });
 
@@ -251,7 +246,9 @@ const goToCard = async (index) => {
     return;
   }
 
-  swipeRef.value.swipeTo(index);
+  if (typeof swipeRef.value?.swipeTo === 'function') {
+    swipeRef.value.swipeTo(index);
+  }
   currentCardIndex.value = index;
   await nextTick();
 
@@ -370,7 +367,9 @@ const handleCreateProject = async () => {
   newProjectName.value = '';
   currentCardIndex.value = 0;
   await nextTick();
-  swipeRef.value?.swipeTo?.(0);
+  if (typeof swipeRef.value?.swipeTo === 'function') {
+    swipeRef.value.swipeTo(0);
+  }
 };
 </script>
 
@@ -442,14 +441,15 @@ const handleCreateProject = async () => {
 .main-swipe {
   flex: 1;
   width: 100%;
-  height: 100%;
+  min-height: 0;
 }
 
 .swipe-item {
   display: flex;
   flex-direction: column;
   height: 100%;
-  overflow-y: hidden;
+  min-height: 0;
+  overflow: hidden;
   background-color: transparent;
 }
 
