@@ -166,7 +166,7 @@ const startGenerating = async (suggestions = []) => {
   const previousContent = String(projectStore.currentContent || '');
   const rewritePacket = isRewrite
     ? buildBot2RewritePacket(suggestions, {
-        rewriteAttempt: projectStore.lastRewriteSuggestions ? 2 : 1,
+        rewriteAttempt: Math.max(1, Number(projectStore.lastRewriteRound || 0) + 1),
         selfReviewText: projectStore.selfReviewText,
         reuseSystemSuggestions: projectStore.reuseSystemSuggestions,
         passScore: passScoreForFormat,
@@ -191,6 +191,8 @@ const startGenerating = async (suggestions = []) => {
         prev_ending: getPreviousEnding(projectStore),
         bot2_context: buildBot2Context(projectStore),
         rewrite_packet: rewritePacket,
+        source_review_id: String(suggestions?.review_id || '').trim(),
+        rewrite_round: Math.max(1, Number(projectStore.lastRewriteRound || 0) + 1),
       }
     : {
         outline: projectStore.currentOutline,
@@ -219,6 +221,8 @@ const startGenerating = async (suggestions = []) => {
     projectStore.currentContent = fullText;
     projectStore.lastRewriteSuggestions = isRewrite ? suggestionsText : '';
     projectStore.lastRewritePacket = isRewrite ? rewritePacket : null;
+    projectStore.lastRewriteSourceReviewId = isRewrite ? String(suggestions?.review_id || '').trim() : '';
+    projectStore.lastRewriteRound = isRewrite ? Math.max(1, Number(projectStore.lastRewriteRound || 0) + 1) : 0;
     if (!isRewrite) {
       projectStore.selfReviewText = '';
       projectStore.reuseSystemSuggestions = true;

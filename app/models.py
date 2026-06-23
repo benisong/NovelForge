@@ -72,6 +72,8 @@ class Bot2RewriteRequest(BaseModel):
     prev_ending: Optional[str] = ""
     bot2_context: Optional[str] = ""   # 大总结+condensed
     rewrite_packet: Optional[dict] = None
+    source_review_id: Optional[str] = ""
+    rewrite_round: Optional[int] = 0
 
 
 class Bot3ReviewRequest(BaseModel):
@@ -82,6 +84,8 @@ class Bot3ReviewRequest(BaseModel):
     custom_prompt: Optional[str] = ""
     previous_suggestions: Optional[str] = ""
     review_attempt: Optional[int] = 1
+    source_review_id: Optional[str] = ""
+    rewrite_round: Optional[int] = 0
 
 
 class Bot4SummarizeRequest(BaseModel):
@@ -156,6 +160,8 @@ class SaveProjectRequest(BaseModel):
     accumulated_tips: list[str] = []
     last_rewrite_suggestions: str = ""
     last_rewrite_packet: Optional[dict] = None
+    last_rewrite_source_review_id: str = ""
+    last_rewrite_round: int = 0
     self_review_text: str = ""
     reuse_system_suggestions: bool = True
     small_summaries: list[dict] = []   # [{chapter, condensed, abstract, time}]

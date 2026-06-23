@@ -330,7 +330,7 @@ const reviewDraft = computed(() => ({
 
 const effectiveRewriteBrief = computed(() => buildRewriteBrief(reviewDraft.value, passScore.value));
 const pendingRewritePacket = computed(() => buildBot2RewritePacket(reviewDraft.value, {
-  rewriteAttempt: projectStore.lastRewriteSuggestions ? 2 : 1,
+  rewriteAttempt: Math.max(1, Number(projectStore.lastRewriteRound || 0) + 1),
   selfReviewText: selfReviewEnabled.value ? selfReviewText.value.trim() : '',
   reuseSystemSuggestions: reuseSystemSuggestions.value,
   passScore: passScore.value,
@@ -339,6 +339,9 @@ const pendingRewriteStrategy = computed(() => describeBot2RewritePacket(pendingR
 
 const getReviewSignature = (content, styleId = currentStyleId.value) =>
   `${String(styleId || '').trim()}::${String(content || '').trim()}`;
+
+const buildReviewId = (content, styleId = currentStyleId.value) =>
+  `review_${Date.now().toString(36)}_${getReviewSignature(content, styleId).length.toString(36)}`;
 
 const findPersistedReview = (signature) => {
   for (let index = projectStore.reviews.length - 1; index >= 0; index -= 1) {
@@ -381,7 +384,11 @@ const applyReview = (review) => {
 };
 
 const persistReview = () => {
+  const existingRecord = findPersistedReview(getReviewSignature(projectStore.currentContent));
+  const reviewId = String(existingRecord?.review_id || '').trim() || buildReviewId(projectStore.currentContent);
+  const rewriteRound = Math.max(0, Number(projectStore.lastRewriteRound || 0) || 0);
   const record = {
+    review_id: reviewId,
     time: nowString(),
     content: projectStore.currentContent,
     style_id: currentStyleId.value,
@@ -395,6 +402,8 @@ const persistReview = () => {
       self_review_text: selfReviewEnabled.value ? selfReviewText.value.trim() : '',
       reuse_system_suggestions: reuseSystemSuggestions.value,
       rewrite_packet: projectStore.lastRewritePacket || null,
+      rewrite_round: rewriteRound,
+      source_review_id: projectStore.lastRewriteSourceReviewId || '',
       items: suggestions.value,
       _raw_preview: rawPreview.value,
       retry_hint: retryHint.value,
@@ -464,7 +473,9 @@ const runReview = async ({ force = false } = {}) => {
         style_id: currentStyleId.value,
         custom_prompt: '',
         previous_suggestions: String(projectStore.lastRewriteSuggestions || '').trim(),
-        review_attempt: projectStore.lastRewriteSuggestions ? 2 : 1,
+        review_attempt: Math.max(1, Number(projectStore.lastRewriteRound || 0) + 1),
+        source_review_id: String(projectStore.lastRewriteSourceReviewId || '').trim(),
+        rewrite_round: Number(projectStore.lastRewriteRound || 0) || 0,
       }),
     });
 
@@ -561,7 +572,10 @@ const handleRewrite = (type) => {
       persistReview();
       emit('rewrite', {
         type,
-        suggestions: rewritePayload,
+        suggestions: {
+          ...rewritePayload,
+          review_id: findPersistedReview(getReviewSignature(projectStore.currentContent))?.review_id || buildReviewId(projectStore.currentContent),
+        },
       });
     })
     .catch(() => {});
@@ -571,6 +585,10 @@ const handleApprove = async () => {
   persistReview();
   projectStore.selfReviewText = selfReviewEnabled.value ? selfReviewText.value.trim() : '';
   projectStore.reuseSystemSuggestions = reuseSystemSuggestions.value;
+  projectStore.lastRewriteSuggestions = '';
+  projectStore.lastRewritePacket = null;
+  projectStore.lastRewriteSourceReviewId = '';
+  projectStore.lastRewriteRound = 0;
   await projectStore.saveProject();
   showToast('章节审核通过');
   emit('approve');

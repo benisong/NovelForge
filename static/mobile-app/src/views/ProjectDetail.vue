@@ -288,6 +288,9 @@ const handleRewrite = async (data) => {
 const handleApprove = async () => {
   await ensureCurrentChapterSaved();
   projectStore.lastRewriteSuggestions = '';
+  projectStore.lastRewritePacket = null;
+  projectStore.lastRewriteSourceReviewId = '';
+  projectStore.lastRewriteRound = 0;
   await memoryViewRef.value?.runAutoMaintenance?.();
   await goToCard(3);
 };
@@ -298,6 +301,9 @@ const startNextChapter = async () => {
   projectStore.currentContent = '';
   projectStore.chapterOutline = '';
   projectStore.lastRewriteSuggestions = '';
+  projectStore.lastRewritePacket = null;
+  projectStore.lastRewriteSourceReviewId = '';
+  projectStore.lastRewriteRound = 0;
   await projectStore.saveProject();
   await goToCard(0);
 };

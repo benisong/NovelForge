@@ -173,6 +173,8 @@ export const useProjectStore = defineStore('project', () => {
   const chapters = ref([]);
   const lastRewriteSuggestions = ref('');
   const lastRewritePacket = ref(null);
+  const lastRewriteSourceReviewId = ref('');
+  const lastRewriteRound = ref(0);
   const selfReviewText = ref('');
   const reuseSystemSuggestions = ref(true);
 
@@ -205,6 +207,8 @@ export const useProjectStore = defineStore('project', () => {
     chapters.value = [];
     lastRewriteSuggestions.value = '';
     lastRewritePacket.value = null;
+    lastRewriteSourceReviewId.value = '';
+    lastRewriteRound.value = 0;
     selfReviewText.value = '';
     reuseSystemSuggestions.value = true;
     pendingPlanningPrompt.value = '';
@@ -370,6 +374,8 @@ export const useProjectStore = defineStore('project', () => {
       bigSummaries.value = data.big_summaries || [];
       lastRewriteSuggestions.value = data.last_rewrite_suggestions || '';
       lastRewritePacket.value = data.last_rewrite_packet || null;
+      lastRewriteSourceReviewId.value = data.last_rewrite_source_review_id || '';
+      lastRewriteRound.value = Number(data.last_rewrite_round || 0) || 0;
       selfReviewText.value = data.self_review_text || '';
       reuseSystemSuggestions.value = data.reuse_system_suggestions !== false;
       localStorage.setItem('nf_last_project', projectId.value);
@@ -418,6 +424,8 @@ export const useProjectStore = defineStore('project', () => {
       big_summaries: bigSummaries.value,
       last_rewrite_suggestions: lastRewriteSuggestions.value,
       last_rewrite_packet: lastRewritePacket.value,
+      last_rewrite_source_review_id: lastRewriteSourceReviewId.value,
+      last_rewrite_round: lastRewriteRound.value,
       self_review_text: selfReviewText.value,
       reuse_system_suggestions: reuseSystemSuggestions.value,
       logs: [],
@@ -468,6 +476,8 @@ export const useProjectStore = defineStore('project', () => {
     chapters,
     lastRewriteSuggestions,
     lastRewritePacket,
+    lastRewriteSourceReviewId,
+    lastRewriteRound,
     selfReviewText,
     reuseSystemSuggestions,
     pendingPlanningPrompt,

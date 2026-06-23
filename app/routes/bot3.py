@@ -683,6 +683,12 @@ async def bot3_review(workspace: str, req: Bot3ReviewRequest):
         review_attempt = max(1, int(req.review_attempt or 1))
     except (TypeError, ValueError):
         review_attempt = 1
+    source_review_id = str(req.source_review_id or "").strip()
+    try:
+        rewrite_round = max(0, int(req.rewrite_round or 0))
+    except (TypeError, ValueError):
+        rewrite_round = 0
+    has_bound_rereview = bool(source_review_id and rewrite_round > 0 and previous_suggestions)
 
     style = _get_effective_style(workspace, req.style_id)
     if style:
@@ -696,23 +702,44 @@ async def bot3_review(workspace: str, req: Bot3ReviewRequest):
             "adheres to the above style requirements."
         )
 
-    if previous_suggestions:
+    if has_bound_rereview:
         system_parts.append(BOT3_REREVIEW_ANCHOR)
+        system_parts.append(
+            f"【Bound Re-Review State】\n"
+            f"source_review_id={source_review_id}\n"
+            f"rewrite_round={rewrite_round}\n"
+            "Treat this as a real re-review of a Bot2 rewrite that was produced from the referenced review. "
+            "First judge whether previous requirements were resolved, then only report unresolved or newly discovered issues."
+        )
+    elif previous_suggestions:
+        system_parts.append(
+            "【Unbound Previous Suggestions】\n"
+            "Previous suggestions text exists, but no stable review binding metadata was provided. "
+            "Use it only as weak reference context; do not assume every previous item must be re-audited one by one."
+        )
 
     system_parts.append(BOT3_FORMAT_ANCHOR)
     messages = [{"role": "system", "content": "\n\n".join(system_parts)}]
 
     cache_breaker = f"[Review request #{uuid.uuid4().hex[:16]}]"
     previous_block = ""
-    if previous_suggestions:
+    if has_bound_rereview:
         previous_block = (
             f"【Re-Review Context】\n"
-            f"This is review round {review_attempt}. The current draft has been rewritten "
-            f"by Bot2 based on the previous round's suggestions.\n"
+            f"This is review round {review_attempt}, tied to source review {source_review_id}. "
+            f"The current draft is expected to be Bot2 rewrite round {rewrite_round} based on the bound previous suggestions below.\n"
             f"The previous round's revision requirements sent to Bot2:\n{previous_suggestions}\n\n"
             "During re-review, check each previous requirement item by item: resolved issues "
             "should NOT be repeated; unresolved issues MUST cite new evidence from the current "
             "draft and provide more specific replacement direction.\n\n"
+        )
+    elif previous_suggestions:
+        previous_block = (
+            f"【Previous Suggestions Reference】\n"
+            f"The system still has previous rewrite suggestions on record, but this request is not strongly bound to a confirmed rewrite chain.\n"
+            f"Reference only:\n{previous_suggestions}\n\n"
+            "If the current draft clearly reflects those revisions, you may consider them as context. "
+            "Otherwise, judge the current draft on its own merits and do not force a one-by-one re-review.\n\n"
         )
     user_content = (
         f"{cache_breaker}\n\n"
@@ -739,6 +766,8 @@ async def bot3_review(workspace: str, req: Bot3ReviewRequest):
 
         review = _parse_bot3_tags(result, req.config.pass_score)
         review["_raw_preview"] = result[:800]
+        review["source_review_id"] = source_review_id
+        review["rewrite_round"] = rewrite_round
         last_review = review
 
         # If parsing succeeded (no retry_hint), we're done
